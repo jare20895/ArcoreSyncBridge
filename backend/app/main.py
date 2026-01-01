@@ -3,6 +3,7 @@ import uuid
 import logging
 from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
+from app.api.endpoints import database_instances, sharepoint_connections
 
 # Configure Logging
 logging.basicConfig(
@@ -30,6 +31,9 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(RequestIDMiddleware)
+
+app.include_router(database_instances.router, prefix="/api/v1/database-instances", tags=["database-instances"])
+app.include_router(sharepoint_connections.router, prefix="/api/v1/sharepoint-connections", tags=["sharepoint-connections"])
 
 @app.get("/health")
 async def health_check():

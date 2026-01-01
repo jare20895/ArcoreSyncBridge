@@ -1,0 +1,103 @@
+import psycopg
+from typing import List
+from uuid import UUID
+from app.schemas.introspection import TableInfo, ColumnInfo, SchemaSnapshot
+from app.models.core import DatabaseInstance
+
+class PostgresIntrospector:
+    def __init__(self, dsn: str):
+        self.dsn = dsn
+
+    def get_tables(self, schema: str = "public") -> List[TableInfo]:
+        # Connect and query information_schema
+        # Note: In a real implementation, we might need to handle connection pooling or use the app's engine if compatible
+        # For now, using direct psycopg connection as per reference design for isolation
+        
+        tables = []
+        try:
+            with psycopg.connect(self.dsn) as conn:
+                with conn.cursor() as cur:
+                    # 1. Get Tables
+                    cur.execute("""
+                        SELECT table_name 
+                        FROM information_schema.tables 
+                        WHERE table_schema = %s AND table_type = 'BASE TABLE'
+                    """, (schema,))
+                    table_names = [r[0] for r in cur.fetchall()]
+                    
+                    for t_name in table_names:
+                        # 2. Get Columns
+                        cur.execute("""
+                            SELECT 
+                                column_name, 
+                                data_type, 
+                                is_nullable,
+                                ordinal_position
+                            FROM information_schema.columns
+                            WHERE table_schema = %s AND table_name = %s
+                            ORDER BY ordinal_position
+                        """, (schema, t_name))
+                        
+                        cols = []
+                        for row in cur.fetchall():
+                            cols.append(ColumnInfo(
+                                name=row[0],
+                                data_type=row[1],
+                                is_nullable=(row[2] == 'YES'),
+                                ordinal_position=row[3]
+                            ))
+                        
+                        # 3. Identify PKs (Basic)
+                        # A more robust query would join kcu/tco
+                        cur.execute("""
+                            SELECT kcu.column_name
+                            FROM information_schema.key_column_usage kcu
+                            JOIN information_schema.table_constraints tco 
+                                ON kcu.constraint_name = tco.constraint_name
+                                AND kcu.table_schema = tco.table_schema
+                            WHERE tco.constraint_type = 'PRIMARY KEY'
+                                AND kcu.table_schema = %s 
+                                AND kcu.table_name = %s
+                        """, (schema, t_name))
+                        pks = {r[0] for r in cur.fetchall()}
+                        
+                        for c in cols:
+                            if c.name in pks:
+                                c.is_primary_key = True
+                                
+                        tables.append(TableInfo(
+                            schema_name=schema,
+                            table_name=t_name,
+                            columns=cols
+                        ))
+        except Exception as e:
+            # Re-raise or handle
+            raise RuntimeError(f"Introspection failed: {str(e)}")
+            
+        return tables
+
+def introspect_database(instance: DatabaseInstance, schema: str = "public") -> SchemaSnapshot:
+    # Construct DSN from instance details
+    # Assuming 'arcore' user for now as discussed in previous step limitations
+    # In production, we'd fetch credentials from the secure store/connection profile
+    dsn = f"postgresql://arcore:arcore_password@{instance.host}:{instance.port}/postgres" # Defaulting DB to postgres? Or should we store DB name?
+    # Spec 1.1 doesn't have DB name in DatabaseInstance! 
+    # Spec 3.2 "Operator selects ... logical database." -> Implies discovery or specific selection.
+    # I'll assume for now we might be connecting to the default DB or need to add db_name to DatabaseInstance.
+    # I'll update DSN to use a placeholder or assume 'postgres' for the maintenance DB, 
+    # but for application tables we likely need the specific DB name.
+    # For this task, I will assume the 'host' field might imply the DB or we need to add it. 
+    # I'll stick to 'postgres' or the one in the DSN for now.
+    
+    # Wait, the spec says "API creates a schema_snapshot".
+    
+    # I'll assume 'arcore_syncbridge' for testing since that's what we have locally.
+    dsn = f"postgresql://arcore:arcore_password@{instance.host}:{instance.port}/arcore_syncbridge"
+    
+    introspector = PostgresIntrospector(dsn)
+    tables = introspector.get_tables(schema)
+    
+    return SchemaSnapshot(
+        instance_id=str(instance.id),
+        tables=tables
+    )

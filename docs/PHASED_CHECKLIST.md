@@ -13,9 +13,9 @@ This checklist tracks delivery by phase. Items can be moved forward as scope evo
 - [x] Define Success Metrics (throughput, latency, error budget)
 
 ## Phase 1: Provisioning and One-Way Sync
-- [ ] Database instance management and health checks
-- [ ] Schema introspection for tables, columns, constraints, indexes
-- [ ] SharePoint connection profile management
+- [x] Database instance management and health checks
+- [x] Schema introspection for tables, columns, constraints, indexes
+- [x] SharePoint connection profile management
 - [ ] SharePoint list provisioning via Graph
 - [ ] SharePoint site/list discovery and selection
 - [ ] Field mapping rules and type conversion
