@@ -24,7 +24,7 @@ This checklist tracks delivery by phase. Items can be moved forward as scope evo
 - [x] Sync ledger write/read for idempotency
 - [x] Source cursor storage for incremental push
 - [x] Scheduled push sync (updated_at strategy)
-- [ ] Admin UI for connections and sync definitions
+- [x] Admin UI for connections and sync definitions
 - [ ] Define Accessibility targets for Admin UI
 
 ## Phase 2: Sharding and Moves
