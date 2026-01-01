@@ -10,17 +10,19 @@ class SharePointConnectionBase(BaseModel):
     status: str = Field("ACTIVE", description="Status")
 
 class SharePointConnectionCreate(SharePointConnectionBase):
-    pass
+    client_secret: str = Field(..., description="Client Secret (will be stored)")
 
 class SharePointConnectionUpdate(BaseModel):
     tenant_id: Optional[str] = None
     client_id: Optional[str] = None
+    client_secret: Optional[str] = None
     authority_host: Optional[str] = None
     scopes: Optional[List[str]] = None
     status: Optional[str] = None
 
 class SharePointConnectionRead(SharePointConnectionBase):
     id: UUID
+    # Exclude client_secret from read
 
     class Config:
         from_attributes = True

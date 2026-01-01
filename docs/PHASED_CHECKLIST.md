@@ -16,14 +16,14 @@ This checklist tracks delivery by phase. Items can be moved forward as scope evo
 - [x] Database instance management and health checks
 - [x] Schema introspection for tables, columns, constraints, indexes
 - [x] SharePoint connection profile management
-- [ ] SharePoint list provisioning via Graph
-- [ ] SharePoint site/list discovery and selection
-- [ ] Field mapping rules and type conversion
-- [ ] Key strategy selection and validation (PK, unique, composite)
-- [ ] Cursor strategy and watermark column selection
-- [ ] Sync ledger write/read for idempotency
-- [ ] Source cursor storage for incremental push
-- [ ] Scheduled push sync (updated_at strategy)
+- [x] SharePoint list provisioning via Graph
+- [x] SharePoint site/list discovery and selection
+- [x] Field mapping rules and type conversion
+- [x] Key strategy selection and validation (PK, unique, composite)
+- [x] Cursor strategy and watermark column selection
+- [x] Sync ledger write/read for idempotency
+- [x] Source cursor storage for incremental push
+- [x] Scheduled push sync (updated_at strategy)
 - [ ] Admin UI for connections and sync definitions
 - [ ] Define Accessibility targets for Admin UI
 
