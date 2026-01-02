@@ -214,6 +214,7 @@ class TestTwoWayIntegration(unittest.TestCase):
         id_hash = hashlib.sha256("P-100".encode()).hexdigest()
         
         ledger_entry = SyncLedgerEntry(
+            sync_def_id=self.sync_def_id,
             source_identity_hash=id_hash,
             content_hash=content_hash,
             provenance="PULL", # Last write was from SP
@@ -221,7 +222,20 @@ class TestTwoWayIntegration(unittest.TestCase):
         )
         
         # Mock DB Lookups
-        self.mock_db.get.side_effect = lambda model, id: self.sync_def if model == SyncDefinition else (ledger_entry if model == SyncLedgerEntry else None)
+        def get_side_effect(model, ident):
+            if model == SyncDefinition:
+                return self.sync_def
+            if model == SyncLedgerEntry:
+                # Handle composite key lookup
+                if isinstance(ident, tuple):
+                    # ident is (sync_def_id, source_identity_hash)
+                    if ident[1] == id_hash:
+                         return ledger_entry
+                elif ident == id_hash: # Fallback if code uses single key
+                     return ledger_entry
+            return None
+
+        self.mock_db.get.side_effect = get_side_effect
         
         def db_execute_side_effect(stmt):
             mock_result = MagicMock()

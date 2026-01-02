@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field
 class FieldMappingBase(BaseModel):
     source_column_id: UUID
     target_column_id: UUID
+    source_column_name: Optional[str] = None
+    target_column_name: Optional[str] = None
     target_type: str
     transform_rule: Optional[str] = None
     is_key: bool = False
@@ -52,6 +54,8 @@ class SyncSourceRead(SyncSourceBase):
 # Target
 class SyncTargetBase(BaseModel):
     target_list_id: UUID
+    sharepoint_connection_id: Optional[UUID] = None
+    site_id: Optional[str] = None
     is_default: bool = False
     priority: int = 1
     status: str = "ACTIVE"
@@ -68,6 +72,8 @@ class SyncTargetRead(SyncTargetBase):
 class SyncDefinitionBase(BaseModel):
     name: str
     source_table_id: UUID
+    source_schema: Optional[str] = None
+    source_table_name: Optional[str] = None
     target_list_id: Optional[UUID] = None
     sync_mode: str = "ONE_WAY_PUSH"
     conflict_policy: str = "SOURCE_WINS"

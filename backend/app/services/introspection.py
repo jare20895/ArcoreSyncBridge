@@ -78,21 +78,11 @@ class PostgresIntrospector:
 
 def introspect_database(instance: DatabaseInstance, schema: str = "public") -> SchemaSnapshot:
     # Construct DSN from instance details
-    # Assuming 'arcore' user for now as discussed in previous step limitations
-    # In production, we'd fetch credentials from the secure store/connection profile
-    dsn = f"postgresql://arcore:arcore_password@{instance.host}:{instance.port}/postgres" # Defaulting DB to postgres? Or should we store DB name?
-    # Spec 1.1 doesn't have DB name in DatabaseInstance! 
-    # Spec 3.2 "Operator selects ... logical database." -> Implies discovery or specific selection.
-    # I'll assume for now we might be connecting to the default DB or need to add db_name to DatabaseInstance.
-    # I'll update DSN to use a placeholder or assume 'postgres' for the maintenance DB, 
-    # but for application tables we likely need the specific DB name.
-    # For this task, I will assume the 'host' field might imply the DB or we need to add it. 
-    # I'll stick to 'postgres' or the one in the DSN for now.
+    user = instance.username or "arcore"
+    password = instance.password or "arcore_password"
+    db_name = instance.db_name or "postgres" # Fallback
     
-    # Wait, the spec says "API creates a schema_snapshot".
-    
-    # I'll assume 'arcore_syncbridge' for testing since that's what we have locally.
-    dsn = f"postgresql://arcore:arcore_password@{instance.host}:{instance.port}/arcore_syncbridge"
+    dsn = f"postgresql://{user}:{password}@{instance.host}:{instance.port}/{db_name}"
     
     introspector = PostgresIntrospector(dsn)
     tables = introspector.get_tables(schema)

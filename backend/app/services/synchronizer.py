@@ -142,6 +142,7 @@ class Synchronizer:
             
             # Find in Ledger
             ledger_entry = self.db.execute(select(SyncLedgerEntry).where(
+                SyncLedgerEntry.sync_def_id == sync_def.id,
                 SyncLedgerEntry.sp_list_id == list_id,
                 SyncLedgerEntry.sp_item_id == int(sp_item_id)
             )).scalars().first()
@@ -218,6 +219,7 @@ class Synchronizer:
                     id_hash = hashlib.sha256(new_id.encode()).hexdigest()
                     
                     new_entry = SyncLedgerEntry(
+                        sync_def_id=sync_def.id,
                         source_identity_hash=id_hash,
                         source_identity=new_id,
                         source_key_strategy="PRIMARY_KEY",
