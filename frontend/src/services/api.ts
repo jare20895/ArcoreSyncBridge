@@ -16,6 +16,11 @@ export const createDatabaseInstance = async (data: any) => {
   return res.data;
 };
 
+export const updateDatabaseInstance = async (id: string, data: any) => {
+  const res = await api.put(`/database-instances/${id}`, data);
+  return res.data;
+};
+
 export const getConnections = async () => {
   const res = await api.get('/sharepoint-connections/');
   return res.data;
@@ -23,6 +28,11 @@ export const getConnections = async () => {
 
 export const createConnection = async (data: any) => {
   const res = await api.post('/sharepoint-connections/', data);
+  return res.data;
+};
+
+export const updateConnection = async (id: string, data: any) => {
+  const res = await api.put(`/sharepoint-connections/${id}`, data);
   return res.data;
 };
 

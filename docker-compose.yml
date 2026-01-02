@@ -9,15 +9,57 @@ services:
       POSTGRES_PASSWORD: arcore_password
       POSTGRES_DB: arcore_syncbridge
     ports:
-      - "5455:5432"
+      - "5465:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arcore -d arcore_syncbridge"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
     restart: always
     ports:
-      - "6379:6379"
+      - "6384:6379"
+
+  backend:
+    build: ./backend
+    restart: always
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8055:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      - POSTGRES_USER=arcore
+      - POSTGRES_PASSWORD=arcore_password
+      - POSTGRES_DB=arcore_syncbridge
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=dev_secret_key
+      - ALGORITHM=HS256
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  frontend:
+    build: ./frontend
+    restart: always
+    command: npm run dev
+    ports:
+      - "3005:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8055
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:
