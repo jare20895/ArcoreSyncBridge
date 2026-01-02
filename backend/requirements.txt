@@ -9,3 +9,5 @@ msal
 requests
 redis
 celery
+simpleeval
+pydantic-settings

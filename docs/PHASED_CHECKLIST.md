@@ -25,23 +25,32 @@ This checklist tracks delivery by phase. Items can be moved forward as scope evo
 - [x] Source cursor storage for incremental push
 - [x] Scheduled push sync (updated_at strategy)
 - [x] Admin UI for connections and sync definitions
+- [ ] Store database credentials on DatabaseInstance (db_name, user, password) with vault-migration note
+- [ ] Implement end-to-end push sync worker (source selection, cursor read/write, ledger upsert, Graph create/update)
+- [ ] Persist field mappings and sync targets during provisioning
+- [ ] Align ORM models and migrations for Phase 1 fields
 - [ ] Define Accessibility targets for Admin UI
 
 ## Phase 2: Sharding and Moves
-- [ ] Sharding policy evaluator (conditional multi-list routing)
-- [ ] Move logic (delete old list + create new)
-- [ ] UI for sharding rules
-- [ ] Ledger audit trail for moves
-- [ ] Drift detection report (orphaned items)
-- [ ] Source failover and rebind workflow
+- [x] Sharding policy evaluator (conditional multi-list routing)
+- [x] Move logic (delete old list + create new)
+- [x] UI for sharding rules
+- [x] Ledger audit trail for moves
+- [x] Drift detection report (orphaned items)
+- [x] UI for Drift Reports
+- [x] Source failover and rebind workflow
+- [ ] Store SharePoint connection_id + site_id on SyncTarget (per-definition context)
+- [ ] Scope cursors and ledger by sync_def_id + source/target identifiers
+- [ ] Integrate sharding evaluator into push sync pipeline
+- [ ] Remove env-based SharePoint context from moves/drift
 
 ## Phase 3: Two-Way Sync
-- [ ] Graph delta query ingestion
-- [ ] Persist delta tokens per list
-- [ ] Conflict resolution policies
-- [ ] Loop prevention (ledger provenance)
-- [ ] UI toggle for sync direction
-- [ ] Integration test suite across both directions
+- [x] Graph delta query ingestion
+- [x] Persist delta tokens per list
+- [x] Conflict resolution policies
+- [x] Loop prevention (ledger provenance)
+- [x] UI toggle for sync direction
+- [x] Integration test suite across both directions
 
 ## Phase 4: Hardening and Scale
 - [ ] Parallel worker pools and rate limit tuning
@@ -50,4 +59,3 @@ This checklist tracks delivery by phase. Items can be moved forward as scope evo
 - [ ] SSO roles and fine-grained RBAC
 - [ ] Disaster recovery runbook (Backup/Restore)
 - [ ] Release flow and Rollback plan tested
-

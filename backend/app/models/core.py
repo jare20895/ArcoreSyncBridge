@@ -42,6 +42,11 @@ class SyncDefinition(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String)
     source_table_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True)) # Logical ref to table
+    
+    # Added to support direct mapping without Inventory tables
+    source_schema: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    source_table_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
     target_list_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True) # Default target
     sync_mode: Mapped[str] = mapped_column(String) # ONE_WAY_PUSH, TWO_WAY
     conflict_policy: Mapped[str] = mapped_column(String, default="SOURCE_WINS")
@@ -101,6 +106,11 @@ class FieldMapping(Base):
     sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id"))
     source_column_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     target_column_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    
+    # Added to support direct mapping without Inventory tables
+    source_column_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    target_column_name: Mapped[Optional[str]] = mapped_column(String, nullable=True) # Internal Name in SharePoint
+
     target_type: Mapped[str] = mapped_column(String)
     transform_rule: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     is_key: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -135,3 +145,18 @@ class SyncLedgerEntry(Base):
     last_source_ts: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_sync_ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     provenance: Mapped[str] = mapped_column(String) # PUSH, PULL
+
+
+class MoveAuditLog(Base):
+    __tablename__ = "move_audit_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sync_def_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    source_identity_hash: Mapped[str] = mapped_column(String)
+    
+    from_list_id: Mapped[str] = mapped_column(String)
+    to_list_id: Mapped[str] = mapped_column(String)
+    
+    moved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    status: Mapped[str] = mapped_column(String, default="SUCCESS") # SUCCESS, FAILED_ORPHAN
+    details: Mapped[Optional[str]] = mapped_column(String, nullable=True) # Error msg or additional info
