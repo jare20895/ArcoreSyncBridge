@@ -4,7 +4,21 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from sqladmin import Admin
+
 from app.api.endpoints import database_instances, sharepoint_connections, provisioning, sharepoint_discovery, sync_definitions, moves, ops
+from app.db.session import engine
+from app.admin import (
+    DatabaseInstanceAdmin,
+    SharePointConnectionAdmin,
+    SyncDefinitionAdmin,
+    SyncSourceAdmin,
+    SyncTargetAdmin,
+    FieldMappingAdmin,
+    SyncLedgerEntryAdmin,
+    SyncCursorAdmin,
+    MoveAuditLogAdmin
+)
 
 # Configure Logging
 logging.basicConfig(
@@ -14,6 +28,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Arcore SyncBridge", version="0.1.0")
+
+# Setup SQLAdmin
+admin = Admin(app, engine)
+admin.add_view(DatabaseInstanceAdmin)
+admin.add_view(SharePointConnectionAdmin)
+admin.add_view(SyncDefinitionAdmin)
+admin.add_view(SyncSourceAdmin)
+admin.add_view(SyncTargetAdmin)
+admin.add_view(FieldMappingAdmin)
+admin.add_view(SyncLedgerEntryAdmin)
+admin.add_view(SyncCursorAdmin)
+admin.add_view(MoveAuditLogAdmin)
 
 # CORS Middleware
 app.add_middleware(
