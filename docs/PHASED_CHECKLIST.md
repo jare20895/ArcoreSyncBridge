@@ -67,6 +67,6 @@ This checklist tracks delivery by phase. Items can be moved forward as scope evo
 - [x] Parallel worker pools and rate limit tuning
 - [x] Large-list batching and pagination
 - [x] Performance benchmarks and regression gates
-- [ ] SSO roles and fine-grained RBAC
+- [ ] SSO roles and fine-grained RBAC (Deferred to separate project)
 - [x] Disaster recovery runbook (Backup/Restore)
-- [ ] Release flow and Rollback plan tested
+- [x] Release flow and Rollback plan tested
