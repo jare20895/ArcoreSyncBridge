@@ -70,3 +70,16 @@ This checklist tracks delivery by phase. Items can be moved forward as scope evo
 - [ ] SSO roles and fine-grained RBAC (Deferred to separate project)
 - [x] Disaster recovery runbook (Backup/Restore)
 - [x] Release flow and Rollback plan tested
+
+## Phase 5: Real-Time CDC and Governance
+- [ ] Publish CDC strategy ADR (logical decoding vs Debezium) and replication slot plan
+- [ ] Implement CDC ingestion with LSN cursors and resumable checkpoints
+- [ ] Add backpressure, throttling, and pause/resume controls for CDC pipelines
+- [ ] Integrate CDC events into mapping + sharding + move workflows with ledger updates
+- [ ] Extend conflict resolution and loop prevention to CDC events
+- [ ] Add run history/metrics tables and APIs (sync_runs, sync_run_metrics)
+- [ ] UI for CDC status, lag, and run history dashboards
+- [ ] Secrets vault/KMS integration and rotation workflow for SharePoint + DB creds
+- [ ] Configuration audit logging and governance controls
+- [ ] CDC end-to-end integration tests and perf regression gates
+- [ ] See `docs/PHASE5_IMPLEMENTATION_PLAN.md` for epics and tickets
