@@ -27,23 +27,12 @@ class Pusher:
         if not sync_def:
             raise ValueError("Sync definition not found")
 
-        # 2. Resolve Connection & Site
-        conn = self.db.query(SharePointConnection).filter(SharePointConnection.status == "ACTIVE").first()
-        if not conn:
-             raise ValueError("No active SharePoint connection found")
+        # 2. Load Definition
+        sync_def = self.db.get(SyncDefinition, sync_def_id)
+        if not sync_def:
+            raise ValueError("Sync definition not found")
 
-        real_secret = os.environ.get("AZURE_CLIENT_SECRET", "")
-        site_id = os.environ.get("SHAREPOINT_SITE_ID", "")
-        
-        graph = GraphClient(
-            tenant_id=conn.tenant_id,
-            client_id=conn.client_id,
-            client_secret=real_secret, 
-            authority_host=conn.authority_host
-        )
-        content_service = SharePointContentService(graph)
-
-        # 3. Resolve Target List
+        # 3. Resolve Target List & Context
         target = self.db.execute(select(SyncTarget).where(
             SyncTarget.sync_def_id == sync_def_id,
             SyncTarget.status == "ACTIVE"
@@ -53,6 +42,26 @@ class Pusher:
              raise ValueError("No active target list found for this definition")
 
         list_id = str(target.target_list_id)
+
+        # Resolve Connection
+        if target.sharepoint_connection_id:
+            conn = self.db.get(SharePointConnection, target.sharepoint_connection_id)
+        else:
+            conn = self.db.query(SharePointConnection).filter(SharePointConnection.status == "ACTIVE").first()
+
+        if not conn:
+             raise ValueError("No active SharePoint connection found")
+
+        real_secret = os.environ.get("AZURE_CLIENT_SECRET", "")
+        site_id = target.site_id or os.environ.get("SHAREPOINT_SITE_ID", "")
+        
+        graph = GraphClient(
+            tenant_id=conn.tenant_id,
+            client_id=conn.client_id,
+            client_secret=real_secret, 
+            authority_host=conn.authority_host
+        )
+        content_service = SharePointContentService(graph)
 
         # 4. Resolve Source Database Instance
         source_mapping = self.db.execute(select(SyncSource).where(

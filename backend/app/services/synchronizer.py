@@ -27,23 +27,12 @@ class Synchronizer:
         if not sync_def:
             raise ValueError("Sync definition not found")
 
-        # 2. Resolve Connection & Site
-        conn = self.db.query(SharePointConnection).filter(SharePointConnection.status == "ACTIVE").first()
-        if not conn:
-             raise ValueError("No active SharePoint connection found")
+        # 2. Load Definition
+        sync_def = self.db.get(SyncDefinition, sync_def_id)
+        if not sync_def:
+            raise ValueError("Sync definition not found")
 
-        real_secret = os.environ.get("AZURE_CLIENT_SECRET", "")
-        site_id = os.environ.get("SHAREPOINT_SITE_ID", "")
-        
-        graph = GraphClient(
-            tenant_id=conn.tenant_id,
-            client_id=conn.client_id,
-            client_secret=real_secret, 
-            authority_host=conn.authority_host
-        )
-        content_service = SharePointContentService(graph)
-
-        # 3. Resolve Target List
+        # 3. Resolve Target List & Context
         target = self.db.execute(select(SyncTarget).where(
             SyncTarget.sync_def_id == sync_def_id,
             SyncTarget.status == "ACTIVE"
@@ -53,6 +42,28 @@ class Synchronizer:
              raise ValueError("No active target list found for this definition")
 
         list_id = str(target.target_list_id)
+
+        # Resolve Connection
+        if target.sharepoint_connection_id:
+            conn = self.db.get(SharePointConnection, target.sharepoint_connection_id)
+        else:
+            # Fallback
+            conn = self.db.query(SharePointConnection).filter(SharePointConnection.status == "ACTIVE").first()
+            
+        if not conn:
+             raise ValueError("No active SharePoint connection found")
+
+        real_secret = os.environ.get("AZURE_CLIENT_SECRET", "")
+        # Use target site_id or env fallback
+        site_id = target.site_id or os.environ.get("SHAREPOINT_SITE_ID", "")
+        
+        graph = GraphClient(
+            tenant_id=conn.tenant_id,
+            client_id=conn.client_id,
+            client_secret=real_secret, 
+            authority_host=conn.authority_host
+        )
+        content_service = SharePointContentService(graph)
 
         # 4. Resolve Source Database Instance
         source_mapping = self.db.execute(select(SyncSource).where(
@@ -163,39 +174,24 @@ class Synchronizer:
                 # Existing Item
                 # Check Conflict
                 conflict = False
-                if sync_def.conflict_policy == "SOURCE_WINS":
-                    # Check if source changed since we last synced
-                    # We check the content hash in ledger vs current DB row
-                    current_row = db_client.fetch_row(schema_name, table_name, pg_pk_col, ledger_entry.source_identity)
-                    if current_row:
-                         # Filter current row to mapped cols to compare hash
-                         current_mapped = {k: v for k, v in current_row.items() if k in pg_data}
-                         # This is rough: PG types might differ from SP types, hashing might mismatch.
-                         # For prototype, we assume if ledger.content_hash != current_hash, it changed.
-                         # But ledger hash is based on what? 
-                         # Let's assume we trust ledger's last_source_ts vs now? 
-                         # Or just check if row differs.
-                         pass
-                    
-                    # Implementation Simplification: 
-                    # If provenance was PUSH (Source -> SP), and we see an update from SP,
-                    # we need to know if Source also changed. 
-                    # If we don't have row versioning/optimistic locking, we risk overwriting.
-                    # Since we are "Source Wins", if in doubt, we skip.
-                    # BUT if it's a pure SP update and Source is stale, we should update Source.
-                    # "Source Wins" usually means on CONCURRENT modification.
-                    # Logic: If Ledger.content_hash == current_source_hash, then source hasn't changed. Safe to update.
-                    # If Ledger.content_hash != current_source_hash, Source changed. Reject SP update.
-                    pass 
-
-                # For MVP Phase 3, we implement "DESTINATION_WINS" (Last Write Wins from Ingress) logic mostly,
-                # or strict "SOURCE_WINS" logic:
-                if sync_def.conflict_policy == "SOURCE_WINS":
-                     # TODO: Deep check. For now, assume if it's in ledger, we check hash.
-                     pass
                 
-                # Apply Update
-                # We update the source row.
+                # Fetch current state from Source to detect concurrent changes
+                current_row = db_client.fetch_row(schema_name, table_name, pg_pk_col, ledger_entry.source_identity)
+                
+                if current_row and sync_def.conflict_policy == "SOURCE_WINS":
+                     # Filter current row to mapped cols to compare hash
+                     current_mapped = {k: v for k, v in current_row.items() if k in pg_data}
+                     current_source_hash = self._compute_content_hash(current_mapped)
+                     
+                     # If Source has changed since last sync (hash mismatch with ledger), Source Wins.
+                     # We assume ledger.content_hash represents the synchronized state.
+                     if current_source_hash != ledger_entry.content_hash:
+                         # Conflict! Source changed. Reject Ingress.
+                         # TODO: Log conflict or raise alert
+                         print(f"Conflict detected for {ledger_entry.source_identity}. Source changed. SOURCE_WINS -> Skip Ingress.")
+                         continue
+
+                # Apply Update (DESTINATION_WINS or Source didn't change)
                 updated_row = db_client.update_row(schema_name, table_name, pg_pk_col, ledger_entry.source_identity, pg_data)
                 
                 # Update Ledger

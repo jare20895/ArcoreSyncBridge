@@ -86,11 +86,16 @@ class SyncTarget(Base):
 
     sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id"), primary_key=True)
     target_list_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True) # Maps to a SP List (external ID or internal ref)
+    
+    sharepoint_connection_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("sharepoint_connections.id"), nullable=True)
+    site_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     priority: Mapped[int] = mapped_column(Integer, default=1)
     status: Mapped[str] = mapped_column(String, default="ACTIVE")
 
     sync_definition: Mapped["SyncDefinition"] = relationship(back_populates="targets")
+    connection: Mapped["SharePointConnection"] = relationship()
 
 
 class SyncKeyColumn(Base):

@@ -46,15 +46,15 @@ This checklist tracks delivery by phase. Items can be moved forward as scope evo
 
 ## Phase 3: Two-Way Sync
 - [x] Graph delta query ingestion
-- [ ] Persist delta tokens per list
-- [ ] Conflict resolution policies
-- [ ] Loop prevention (ledger provenance)
-- [ ] UI toggle for sync direction
-- [ ] Integration test suite across both directions
-- [ ] Wire push + ingress jobs into scheduler and UI "Run Sync Now"
-- [ ] Store SharePoint context per target (connection_id, site_id) and remove env-based context
-- [ ] Scope cursors by source/target identifiers to support per-list delta tokens
-- [ ] Align ORM fields (source_schema/table_name, field mapping names) with migrations and API schemas
+- [x] Persist delta tokens per list
+- [x] Conflict resolution policies
+- [x] Loop prevention (ledger provenance)
+- [x] UI toggle for sync direction
+- [x] Integration test suite across both directions
+- [x] Wire push + ingress jobs into scheduler and UI "Run Sync Now"
+- [x] Store SharePoint context per target (connection_id, site_id) and remove env-based context
+- [x] Scope cursors by source/target identifiers to support per-list delta tokens
+- [x] Align ORM fields (source_schema/table_name, field mapping names) with migrations and API schemas
 
 ## Phase 4: Hardening and Scale
 - [ ] Parallel worker pools and rate limit tuning

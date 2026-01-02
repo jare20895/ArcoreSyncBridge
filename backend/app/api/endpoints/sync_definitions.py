@@ -76,3 +76,21 @@ def get_sync_definition(
     if not db_def:
         raise HTTPException(status_code=404, detail="Sync definition not found")
     return db_def
+
+@router.put("/{def_id}", response_model=SyncDefinitionRead)
+def update_sync_definition(
+    def_id: UUID,
+    def_in: SyncDefinitionUpdate,
+    db: Session = Depends(get_db)
+):
+    db_def = db.get(SyncDefinition, def_id)
+    if not db_def:
+        raise HTTPException(status_code=404, detail="Sync definition not found")
+    
+    update_data = def_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_def, field, value)
+    
+    db.commit()
+    db.refresh(db_def)
+    return db_def
