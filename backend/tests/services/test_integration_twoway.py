@@ -117,10 +117,18 @@ class TestTwoWayIntegration(unittest.TestCase):
         
         # Check Ledger Creation
         self.mock_db.add.assert_called()
-        added_obj = self.mock_db.add.call_args[0][0]
-        self.IsInstance(added_obj, SyncLedgerEntry)
-        self.assertEqual(added_obj.provenance, "PULL")
-        self.assertEqual(added_obj.source_identity, "P-100")
+        
+        # Find SyncLedgerEntry in calls
+        found_ledger_entry = None
+        for call in self.mock_db.add.call_args_list:
+            obj = call[0][0]
+            if isinstance(obj, SyncLedgerEntry):
+                found_ledger_entry = obj
+                break
+        
+        self.assertIsNotNone(found_ledger_entry, "SyncLedgerEntry was not added to DB")
+        self.assertEqual(found_ledger_entry.provenance, "PULL")
+        self.assertEqual(found_ledger_entry.source_identity, "P-100")
 
     @patch('app.services.pusher.GraphClient')
     @patch('app.services.pusher.SharePointContentService')

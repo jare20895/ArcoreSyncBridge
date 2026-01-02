@@ -70,7 +70,8 @@ class Synchronizer:
         cursor_stmt = select(SyncCursor).where(
             SyncCursor.sync_def_id == sync_def_id,
             SyncCursor.cursor_scope == "TARGET",
-            SyncCursor.cursor_type == "DELTA_TOKEN"
+            SyncCursor.cursor_type == "DELTA_TOKEN",
+            SyncCursor.target_list_id == target.target_list_id
         )
         cursor = self.db.execute(cursor_stmt).scalars().first()
         current_token = cursor.cursor_value if cursor else None
@@ -83,20 +84,20 @@ class Synchronizer:
 
         # 8. Persist New Token
         if new_token:
-            stmt = insert(SyncCursor).values(
-                sync_def_id=sync_def_id,
-                cursor_scope="TARGET",
-                cursor_type="DELTA_TOKEN",
-                cursor_value=new_token,
-                updated_at=datetime.utcnow()
-            ).on_conflict_do_update(
-                index_elements=['sync_def_id', 'cursor_scope'],
-                set_={
-                    "cursor_value": new_token,
-                    "updated_at": datetime.utcnow()
-                }
-            )
-            self.db.execute(stmt)
+            if cursor:
+                cursor.cursor_value = new_token
+                cursor.updated_at = datetime.utcnow()
+                self.db.add(cursor)
+            else:
+                new_cursor = SyncCursor(
+                    sync_def_id=sync_def_id,
+                    cursor_scope="TARGET",
+                    cursor_type="DELTA_TOKEN",
+                    cursor_value=new_token,
+                    target_list_id=target.target_list_id,
+                    updated_at=datetime.utcnow()
+                )
+                self.db.add(new_cursor)
             self.db.commit()
 
         return {

@@ -15,6 +15,11 @@ class DatabaseInstance(Base):
     instance_label: Mapped[str] = mapped_column(String, unique=True)
     host: Mapped[str] = mapped_column(String)
     port: Mapped[int] = mapped_column(Integer, default=5432)
+    
+    db_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    username: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    password: Mapped[Optional[str]] = mapped_column(String, nullable=True) # Encrypted
+    
     role: Mapped[str] = mapped_column(String, default="PRIMARY") # PRIMARY, REPLICA
     priority: Mapped[int] = mapped_column(Integer, default=1)
     status: Mapped[str] = mapped_column(String, default="ACTIVE")
@@ -122,11 +127,15 @@ class FieldMapping(Base):
 class SyncCursor(Base):
     __tablename__ = "sync_cursors"
 
-    sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id"), primary_key=True)
-    cursor_scope: Mapped[str] = mapped_column(String, primary_key=True) # SOURCE, TARGET
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id"))
+    cursor_scope: Mapped[str] = mapped_column(String) # SOURCE, TARGET
     cursor_type: Mapped[str] = mapped_column(String) # TIMESTAMP, LSN, DELTA_TOKEN
     cursor_value: Mapped[str] = mapped_column(String)
+    
     source_instance_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    target_list_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
