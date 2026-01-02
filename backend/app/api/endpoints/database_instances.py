@@ -18,22 +18,7 @@ from app.schemas.database_instance import (
 )
 from app.schemas.introspection import SchemaSnapshot
 from app.services.introspection import introspect_database
-
-# TODO: Move this to a shared dependencies file
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
-# Using the connection string from env (or default for now)
-SQLALCHEMY_DATABASE_URL = "postgresql://arcore:arcore_password@localhost:5455/arcore_syncbridge"
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+from app.db.session import get_db
 
 router = APIRouter()
 

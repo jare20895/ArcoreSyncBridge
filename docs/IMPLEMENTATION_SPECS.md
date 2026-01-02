@@ -24,11 +24,14 @@ This document defines the technical specifications for Arcore SyncBridge, includ
   "id": "uuid",
   "tenant_id": "tenant-id",
   "client_id": "client-id",
+  "client_secret": "encrypted-secret",
   "authority_host": "https://login.microsoftonline.com",
   "scopes": ["https://graph.microsoft.com/.default"],
   "status": "ACTIVE"
 }
 ```
+Notes:
+- client_secret is stored encrypted and is the primary auth source (env vars are optional local-dev overrides).
 
 ### 1.3 SyncDefinition
 ```json
@@ -114,6 +117,7 @@ This document defines the technical specifications for Arcore SyncBridge, includ
 ### 1.9 SyncLedgerEntry
 ```json
 {
+  "sync_def_id": "uuid",
   "source_identity": "projects|status=Active|code=PRJ-001",
   "source_identity_hash": "sha256",
   "source_key_strategy": "COMPOSITE_COLUMNS",
@@ -197,12 +201,14 @@ This document defines the technical specifications for Arcore SyncBridge, includ
   - HASHED: hash a normalized JSON of key columns.
 - Normalize key values (trim strings, consistent casing, stable type casting) before hashing.
 - Store source_identity_hash (SHA-256) in the ledger to prevent duplicates even if row IDs change.
+- Scope ledger entries per sync definition; uniqueness is (sync_def_id, source_identity_hash).
 
 ## 5. Conditional target routing
 - target_strategy SINGLE uses target_list_id directly.
 - target_strategy CONDITIONAL evaluates sharding_policy rules in order.
 - Rules are evaluated first-match wins; if no match, use default_target_list_id.
 - All target_list_id values must exist in sync_targets and be ACTIVE.
+- For CONDITIONAL, sharding applies to every push run by default; allow an explicit per-run override to force a single target (backfills/incidents).
 
 ## 6. Cursor management
 - Push cursors are stored per sync definition and source instance.
@@ -216,7 +222,7 @@ This document defines the technical specifications for Arcore SyncBridge, includ
 1. Worker selects the active database instance for the sync definition.
 2. Worker queries rows updated since last cursor value.
 3. For each row, compute source_identity and source_identity_hash.
-4. Evaluate sharding rules to determine target list.
+4. Evaluate sharding rules to determine target list (unless a per-run override forces a single target).
 5. Fetch ledger entry by source_identity_hash.
 6. If no ledger entry, create SharePoint item and insert ledger.
 7. If ledger exists and target list matches, hash payload and update if changed.

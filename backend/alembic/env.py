@@ -8,8 +8,10 @@ from alembic import context
 # Import your models here
 from app.db.base import Base
 from app.models import core # Ensure models are registered
+from app.core.config import settings
 
 config = context.config
+config.set_main_option("sqlalchemy.url", settings.SQLALCHEMY_DATABASE_URL)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
