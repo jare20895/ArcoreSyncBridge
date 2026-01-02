@@ -25,10 +25,10 @@ This checklist tracks delivery by phase. Items can be moved forward as scope evo
 - [x] Source cursor storage for incremental push
 - [x] Scheduled push sync (updated_at strategy)
 - [x] Admin UI for connections and sync definitions
-- [ ] Store database credentials on DatabaseInstance (db_name, user, password) with vault-migration note
-- [ ] Implement end-to-end push sync worker (source selection, cursor read/write, ledger upsert, Graph create/update)
+- [x] Store database credentials on DatabaseInstance (db_name, user, password) with vault-migration note
+- [x] Implement end-to-end push sync worker (source selection, cursor read/write, ledger upsert, Graph create/update)
 - [ ] Persist field mappings and sync targets during provisioning
-- [ ] Align ORM models and migrations for Phase 1 fields
+- [x] Align ORM models and migrations for Phase 1 fields
 - [ ] Define Accessibility targets for Admin UI
 
 ## Phase 2: Sharding and Moves
@@ -46,11 +46,15 @@ This checklist tracks delivery by phase. Items can be moved forward as scope evo
 
 ## Phase 3: Two-Way Sync
 - [x] Graph delta query ingestion
-- [x] Persist delta tokens per list
-- [x] Conflict resolution policies
-- [x] Loop prevention (ledger provenance)
-- [x] UI toggle for sync direction
-- [x] Integration test suite across both directions
+- [ ] Persist delta tokens per list
+- [ ] Conflict resolution policies
+- [ ] Loop prevention (ledger provenance)
+- [ ] UI toggle for sync direction
+- [ ] Integration test suite across both directions
+- [ ] Wire push + ingress jobs into scheduler and UI "Run Sync Now"
+- [ ] Store SharePoint context per target (connection_id, site_id) and remove env-based context
+- [ ] Scope cursors by source/target identifiers to support per-list delta tokens
+- [ ] Align ORM fields (source_schema/table_name, field mapping names) with migrations and API schemas
 
 ## Phase 4: Hardening and Scale
 - [ ] Parallel worker pools and rate limit tuning

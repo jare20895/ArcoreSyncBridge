@@ -133,6 +133,71 @@ class TestTwoWayIntegration(unittest.TestCase):
     @patch('app.services.pusher.GraphClient')
     @patch('app.services.pusher.SharePointContentService')
     @patch('app.services.pusher.DatabaseClient')
+    def test_push_success(self, MockDBClient, MockContentService, MockGraph):
+        # Scenario: DB has a NEW update. Push to SharePoint.
+        
+        mock_content = MockContentService.return_value
+        mock_db_client = MockDBClient.return_value
+        
+        # Mock Data
+        row_ts = datetime(2025, 1, 1, 12, 0, 0)
+        row_data = {"sku": "P-200", "name": "Fresh Product", "updated_at": row_ts}
+        mock_db_client.fetch_changed_rows.return_value = [row_data]
+        
+        # Mock DB Lookups
+        def db_execute_side_effect(stmt):
+            mock_result = MagicMock()
+            s_str = str(stmt)
+            if "sharepoint_connections" in s_str:
+                mock_result.scalars.return_value.first.return_value = self.conn
+            elif "sync_targets" in s_str:
+                mock_result.scalars.return_value.first.return_value = self.target
+            elif "sync_sources" in s_str:
+                mock_result.scalars.return_value.first.return_value = self.source
+            elif "sync_cursors" in s_str:
+                mock_result.scalars.return_value.first.return_value = None 
+            return mock_result
+            
+        self.mock_db.execute.side_effect = db_execute_side_effect
+        self.mock_db.get.side_effect = lambda model, id: self.sync_def if model == SyncDefinition else None # No ledger entry
+        self.mock_db.query.return_value.filter.return_value.first.return_value = self.conn
+
+        # Init Pusher
+        pusher = Pusher(self.mock_db)
+        
+        # Mock SP Create Return
+        mock_content.create_item.return_value = "200"
+        
+        # Run
+        result = pusher.run_push(self.sync_def_id)
+        
+        # Verify
+        self.assertEqual(result["processed_count"], 1)
+        mock_content.create_item.assert_called()
+        
+        # Verify Ledger Creation
+        found_ledger = False
+        for call in self.mock_db.add.call_args_list:
+            obj = call[0][0]
+            if isinstance(obj, SyncLedgerEntry):
+                self.assertEqual(obj.provenance, "PUSH")
+                self.assertEqual(obj.sp_item_id, 200)
+                found_ledger = True
+        self.assertTrue(found_ledger)
+        
+        # Verify Cursor Update
+        found_cursor = False
+        for call in self.mock_db.add.call_args_list:
+            obj = call[0][0]
+            # Since SyncCursor and SyncLedgerEntry are both added, check type or attr
+            if hasattr(obj, 'cursor_scope') and obj.cursor_scope == "SOURCE":
+                 self.assertEqual(obj.cursor_value, str(row_ts))
+                 found_cursor = True
+        self.assertTrue(found_cursor)
+
+    @patch('app.services.pusher.GraphClient')
+    @patch('app.services.pusher.SharePointContentService')
+    @patch('app.services.pusher.DatabaseClient')
     def test_push_loop_prevention(self, MockDBClient, MockContentService, MockGraph):
         # Scenario: DB has an update. But it matches the Ledger (Echo). Should Skip.
         

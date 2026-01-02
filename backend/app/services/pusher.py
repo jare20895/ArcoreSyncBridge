@@ -118,6 +118,9 @@ class Pusher:
             
             content_hash = self._compute_content_hash(filtered_row_data)
 
+            # Extract Timestamp
+            row_ts = row.get(cursor_col)
+
             # LOOP PREVENTION / LEDGER CHECK
             ledger_entry = self.db.get(SyncLedgerEntry, id_hash)
             
@@ -131,7 +134,6 @@ class Pusher:
                 # So the row will appear in `fetch_changed_rows`.
                 
                 # We check `ledger_entry.last_sync_ts`.
-                row_ts = row.get(cursor_col)
                 # Ensure row_ts is comparable to last_sync_ts (datetime vs datetime)
                 
                 if ledger_entry.provenance == "PULL":
@@ -188,21 +190,29 @@ class Pusher:
 
         # 8. Update Cursor
         if max_cursor_seen:
-            stmt = insert(SyncCursor).values(
-                sync_def_id=sync_def_id,
-                cursor_scope="SOURCE",
-                cursor_type="TIMESTAMP",
-                cursor_value=max_cursor_seen,
-                source_instance_id=source_mapping.database_instance_id,
-                updated_at=datetime.utcnow()
-            ).on_conflict_do_update(
-                index_elements=['sync_def_id', 'cursor_scope'],
-                set_={
-                    "cursor_value": max_cursor_seen,
-                    "updated_at": datetime.utcnow()
-                }
+            # Check for existing cursor
+            cursor_stmt = select(SyncCursor).where(
+                SyncCursor.sync_def_id == sync_def_id,
+                SyncCursor.cursor_scope == "SOURCE",
+                SyncCursor.source_instance_id == source_mapping.database_instance_id
             )
-            self.db.execute(stmt)
+            cursor = self.db.execute(cursor_stmt).scalars().first()
+            
+            if cursor:
+                cursor.cursor_value = max_cursor_seen
+                cursor.updated_at = datetime.utcnow()
+                self.db.add(cursor)
+            else:
+                new_cursor = SyncCursor(
+                    sync_def_id=sync_def_id,
+                    cursor_scope="SOURCE",
+                    cursor_type="TIMESTAMP",
+                    cursor_value=max_cursor_seen,
+                    source_instance_id=source_mapping.database_instance_id,
+                    updated_at=datetime.utcnow()
+                )
+                self.db.add(new_cursor)
+            
             self.db.commit()
 
         return {
