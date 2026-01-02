@@ -68,5 +68,5 @@ This checklist tracks delivery by phase. Items can be moved forward as scope evo
 - [x] Large-list batching and pagination
 - [x] Performance benchmarks and regression gates
 - [ ] SSO roles and fine-grained RBAC
-- [ ] Disaster recovery runbook (Backup/Restore)
+- [x] Disaster recovery runbook (Backup/Restore)
 - [ ] Release flow and Rollback plan tested
