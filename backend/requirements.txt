@@ -11,3 +11,4 @@ redis
 celery
 simpleeval
 pydantic-settings
+tenacity
