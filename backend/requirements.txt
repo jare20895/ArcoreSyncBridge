@@ -12,3 +12,4 @@ celery
 simpleeval
 pydantic-settings
 tenacity
+sqladmin[full]
