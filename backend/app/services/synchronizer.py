@@ -87,11 +87,23 @@ class Synchronizer:
         cursor = self.db.execute(cursor_stmt).scalars().first()
         current_token = cursor.cursor_value if cursor else None
 
-        # 6. Fetch Changes
-        changes, new_token = content_service.get_list_changes(site_id, list_id, current_token)
+        # 6. Fetch Changes with Batch Processing
+        total_processed = 0
+        
+        def process_batch(items):
+            nonlocal total_processed
+            count = self._process_changes(sync_def, db_client, items, list_id, source_mapping.database_instance_id)
+            total_processed += count
+            # Commit after each batch to keep transaction size manageable
+            self.db.commit()
 
-        # 7. Process Changes
-        processed_count = self._process_changes(sync_def, db_client, changes, list_id, source_mapping.database_instance_id)
+        # Pass callback to handle batches (avoids OOM for large lists)
+        _, new_token = content_service.get_list_changes(
+            site_id, 
+            list_id, 
+            current_token, 
+            callback=process_batch
+        )
 
         # 8. Persist New Token
         if new_token:
@@ -112,7 +124,7 @@ class Synchronizer:
             self.db.commit()
 
         return {
-            "processed_count": processed_count,
+            "processed_count": total_processed,
             "new_token_persisted": bool(new_token)
         }
 
@@ -142,6 +154,7 @@ class Synchronizer:
             
             # Find in Ledger
             ledger_entry = self.db.execute(select(SyncLedgerEntry).where(
+                SyncLedgerEntry.sync_def_id == sync_def.id,
                 SyncLedgerEntry.sp_list_id == list_id,
                 SyncLedgerEntry.sp_item_id == int(sp_item_id)
             )).scalars().first()
@@ -218,6 +231,7 @@ class Synchronizer:
                     id_hash = hashlib.sha256(new_id.encode()).hexdigest()
                     
                     new_entry = SyncLedgerEntry(
+                        sync_def_id=sync_def.id,
                         source_identity_hash=id_hash,
                         source_identity=new_id,
                         source_key_strategy="PRIMARY_KEY",

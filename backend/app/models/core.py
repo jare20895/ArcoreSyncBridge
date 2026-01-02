@@ -147,6 +147,7 @@ class SyncCursor(Base):
 class SyncLedgerEntry(Base):
     __tablename__ = "sync_ledger"
 
+    sync_def_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     source_identity_hash: Mapped[str] = mapped_column(String, primary_key=True) # SHA256
     source_identity: Mapped[str] = mapped_column(String) # Printable identity
     source_key_strategy: Mapped[str] = mapped_column(String)

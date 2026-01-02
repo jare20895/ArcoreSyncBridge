@@ -2,8 +2,9 @@ import time
 import uuid
 import logging
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from app.api.endpoints import database_instances, sharepoint_connections, provisioning, sharepoint_discovery, sync_definitions
+from app.api.endpoints import database_instances, sharepoint_connections, provisioning, sharepoint_discovery, sync_definitions, moves, ops
 
 # Configure Logging
 logging.basicConfig(
@@ -13,6 +14,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Arcore SyncBridge", version="0.1.0")
+
+# CORS Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Allow all origins for dev
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -37,6 +47,8 @@ app.include_router(sharepoint_connections.router, prefix="/api/v1/sharepoint-con
 app.include_router(provisioning.router, prefix="/api/v1/provisioning", tags=["provisioning"])
 app.include_router(sharepoint_discovery.router, prefix="/api/v1/sharepoint-discovery", tags=["sharepoint-discovery"])
 app.include_router(sync_definitions.router, prefix="/api/v1/sync-definitions", tags=["sync-definitions"])
+app.include_router(moves.router, prefix="/api/v1/moves", tags=["moves"])
+app.include_router(ops.router, prefix="/api/v1/ops", tags=["ops"])
 
 @app.get("/health")
 async def health_check():

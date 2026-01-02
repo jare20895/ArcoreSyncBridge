@@ -38,23 +38,23 @@ class SharePointContentService:
         # Graph API: GET /sites/{site-id}/lists/{list-id}/items/{item-id}?expand=fields
         return self.graph.request("GET", f"/sites/{site_id}/lists/{list_id}/items/{item_id}?expand=fields")
 
-    def get_list_changes(self, site_id: str, list_id: str, delta_link: Optional[str] = None) -> tuple[list[Dict[str, Any]], str]:
+    def get_list_changes(
+        self, 
+        site_id: str, 
+        list_id: str, 
+        delta_link: Optional[str] = None,
+        callback: Optional[callable] = None
+    ) -> tuple[list[Dict[str, Any]], str]:
         """
         Fetches changes from the list using Graph Delta Query.
         Returns (list_of_changes, new_delta_link).
-        Handles pagination internally.
+        Handles pagination. 
+        If callback is provided, calls callback(items) for each page and returns ([], new_delta_link) to save memory.
         """
         items = []
         
         # If we have a stored delta link, use it directly.
-        # Otherwise start a fresh delta query.
         if delta_link:
-            # The delta link is a full URL provided by Graph previously
-            # We need to parse it to use with our client which expects path, 
-            # OR we can just use the path part if the client supports it.
-            # Our GraphClient prepends "https://graph.microsoft.com/v1.0" if we pass a path.
-            # Delta links usually include the full host.
-            # Let's strip the host if present to be safe with our client wrapper.
             if "graph.microsoft.com/v1.0" in delta_link:
                 path = delta_link.split("graph.microsoft.com/v1.0")[1]
             else:
@@ -65,8 +65,13 @@ class SharePointContentService:
         while True:
             response = self.graph.request("GET", path)
             
-            if "value" in response:
-                items.extend(response["value"])
+            page_items = response.get("value", [])
+            
+            if callback:
+                if page_items:
+                    callback(page_items)
+            else:
+                items.extend(page_items)
             
             if "@odata.nextLink" in response:
                 next_link = response["@odata.nextLink"]
@@ -78,8 +83,6 @@ class SharePointContentService:
                 return items, response["@odata.deltaLink"]
             else:
                 # Should not happen in Delta Query flow unless empty or error
-                # But if it does, return what we have and no new link (or current path?)
-                # Actually delta query ALWAYS returns deltaLink at the end.
                 break
                 
         return items, ""

@@ -16,4 +16,11 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    task_default_queue="default",
+    task_routes={
+        "app.worker.tasks.run_push_sync": {"queue": "sync_queue"},
+        "app.worker.tasks.run_ingress_sync": {"queue": "sync_queue"},
+        # Future tasks
+        # "app.worker.tasks.generate_drift_report": {"queue": "reports_queue"},
+    }
 )

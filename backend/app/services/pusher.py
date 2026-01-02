@@ -13,9 +13,48 @@ from app.services.graph import GraphClient
 from app.services.database import DatabaseClient
 import os
 
+from app.services.sharding import ShardingEvaluator
+
 class Pusher:
     def __init__(self, db: Session):
         self.db = db
+        self._conn_cache = {}
+        self._content_service_cache = {}
+
+    def _get_content_service(self, target: SyncTarget) -> tuple[SharePointContentService, str]:
+        # Cache key could be connection_id + site_id
+        conn_id = target.sharepoint_connection_id
+        # Use target site_id or fallback. We need this for the key too if connection is reused across sites.
+        real_secret = os.environ.get("AZURE_CLIENT_SECRET", "")
+        site_id = target.site_id or os.environ.get("SHAREPOINT_SITE_ID", "")
+        
+        if not conn_id:
+             cache_key = ("DEFAULT", site_id)
+        else:
+             cache_key = (conn_id, site_id)
+             
+        if cache_key in self._content_service_cache:
+            return self._content_service_cache[cache_key]
+
+        # Resolve Connection
+        if conn_id:
+            conn = self.db.get(SharePointConnection, conn_id)
+        else:
+            conn = self.db.query(SharePointConnection).filter(SharePointConnection.status == "ACTIVE").first()
+
+        if not conn:
+             raise ValueError("No active SharePoint connection found")
+
+        graph = GraphClient(
+            tenant_id=conn.tenant_id,
+            client_id=conn.client_id,
+            client_secret=real_secret, 
+            authority_host=conn.authority_host
+        )
+        service = SharePointContentService(graph)
+        
+        self._content_service_cache[cache_key] = (service, site_id)
+        return service, site_id
 
     def run_push(self, sync_def_id: UUID) -> dict:
         """
@@ -27,41 +66,22 @@ class Pusher:
         if not sync_def:
             raise ValueError("Sync definition not found")
 
-        # 2. Load Definition
-        sync_def = self.db.get(SyncDefinition, sync_def_id)
-        if not sync_def:
-            raise ValueError("Sync definition not found")
-
-        # 3. Resolve Target List & Context
-        target = self.db.execute(select(SyncTarget).where(
+        # 2. Resolve Targets
+        targets = self.db.execute(select(SyncTarget).where(
             SyncTarget.sync_def_id == sync_def_id,
             SyncTarget.status == "ACTIVE"
-        )).scalars().first()
+        )).scalars().all()
         
-        if not target:
-             raise ValueError("No active target list found for this definition")
-
-        list_id = str(target.target_list_id)
-
-        # Resolve Connection
-        if target.sharepoint_connection_id:
-            conn = self.db.get(SharePointConnection, target.sharepoint_connection_id)
-        else:
-            conn = self.db.query(SharePointConnection).filter(SharePointConnection.status == "ACTIVE").first()
-
-        if not conn:
-             raise ValueError("No active SharePoint connection found")
-
-        real_secret = os.environ.get("AZURE_CLIENT_SECRET", "")
-        site_id = target.site_id or os.environ.get("SHAREPOINT_SITE_ID", "")
+        if not targets:
+             raise ValueError("No active target lists found for this definition")
         
-        graph = GraphClient(
-            tenant_id=conn.tenant_id,
-            client_id=conn.client_id,
-            client_secret=real_secret, 
-            authority_host=conn.authority_host
-        )
-        content_service = SharePointContentService(graph)
+        target_map = {str(t.target_list_id): t for t in targets}
+        default_target = next((t for t in targets if t.is_default), targets[0])
+
+        # Setup Sharding if needed
+        sharding_evaluator = None
+        if sync_def.target_strategy == "CONDITIONAL":
+            sharding_evaluator = ShardingEvaluator(sync_def.sharding_policy)
 
         # 4. Resolve Source Database Instance
         source_mapping = self.db.execute(select(SyncSource).where(
@@ -86,13 +106,7 @@ class Pusher:
         last_watermark = cursor.cursor_value if cursor else None
 
         # 6. Fetch Changed Rows from Source
-        # We need the cursor column name. 
-        # Ideally mapped via `cursor_column_id` -> Inventory.
-        # Fallback: Assume 'updated_at' or check if sync_def has a helper field (not added yet).
-        # We'll use 'updated_at' default.
         cursor_col = "updated_at" 
-        # In a real impl, we'd lookup `TableColumn` by `cursor_column_id`.
-        
         schema_name = sync_def.source_schema or "public"
         table_name = sync_def.source_table_name or sync_def.name
         
@@ -130,21 +144,33 @@ class Pusher:
             # Extract Timestamp
             row_ts = row.get(cursor_col)
 
+            # Determine Target
+            target_list_id = None
+            if sharding_evaluator:
+                shard_uuid = sharding_evaluator.evaluate(row)
+                if shard_uuid:
+                    target_list_id = str(shard_uuid)
+            
+            if not target_list_id:
+                target_list_id = str(default_target.target_list_id)
+
+            # Resolve Target Context
+            target_obj = target_map.get(target_list_id)
+            if not target_obj:
+                print(f"Target list {target_list_id} determined but not found in active targets. Skipping.")
+                continue
+
+            try:
+                content_service, site_id = self._get_content_service(target_obj)
+            except Exception as e:
+                print(f"Failed to get content service for target {target_list_id}: {e}")
+                continue
+
             # LOOP PREVENTION / LEDGER CHECK
-            ledger_entry = self.db.get(SyncLedgerEntry, id_hash)
+            ledger_entry = self.db.get(SyncLedgerEntry, (sync_def_id, id_hash))
             
             if ledger_entry:
                 # If Provenance is PULL (last write came from SP), we must check if Source changed since then.
-                # If Source Timestamp (cursor_col) <= Last Sync TS, then this "change" is just the echo of our PULL.
-                # However, we fetched rows WHERE updated_at > last_watermark.
-                # If last_watermark was set correctly after PULL, we shouldn't even see this row?
-                # Ah, correct. If we update Source during Pull, we should update the SOURCE Cursor too?
-                # No, usually we update the Source Row, which bumps 'updated_at'.
-                # So the row will appear in `fetch_changed_rows`.
-                
-                # We check `ledger_entry.last_sync_ts`.
-                # Ensure row_ts is comparable to last_sync_ts (datetime vs datetime)
-                
                 if ledger_entry.provenance == "PULL":
                     # Check if hash matches. If hash is same, it's definitely a loop echo.
                     if ledger_entry.content_hash == content_hash:
@@ -160,7 +186,7 @@ class Pusher:
             if ledger_entry:
                 # Update SP Item
                 try:
-                    content_service.update_item(site_id, list_id, str(ledger_entry.sp_item_id), sp_fields)
+                    content_service.update_item(site_id, target_list_id, str(ledger_entry.sp_item_id), sp_fields)
                     
                     # Update Ledger
                     ledger_entry.content_hash = content_hash
@@ -173,16 +199,17 @@ class Pusher:
             else:
                 # Create SP Item
                 try:
-                    sp_id_str = content_service.create_item(site_id, list_id, sp_fields)
+                    sp_id_str = content_service.create_item(site_id, target_list_id, sp_fields)
                     sp_item_id = int(sp_id_str)
                     
                     # Create Ledger
                     new_entry = SyncLedgerEntry(
+                        sync_def_id=sync_def_id,
                         source_identity_hash=id_hash,
                         source_identity=source_id,
                         source_key_strategy="PRIMARY_KEY",
                         source_instance_id=source_mapping.database_instance_id,
-                        sp_list_id=list_id,
+                        sp_list_id=target_list_id,
                         sp_item_id=sp_item_id,
                         content_hash=content_hash,
                         last_source_ts=row_ts if isinstance(row_ts, datetime) else datetime.utcnow(),
