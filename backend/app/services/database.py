@@ -107,3 +107,12 @@ class DatabaseClient:
                 rows = cur.fetchall()
                 
                 return [dict(zip(col_names, row)) for row in rows]
+
+    def execute_raw(self, query: str, params: Optional[tuple] = None, autocommit: bool = False) -> List[tuple]:
+        """Executes a raw query and returns all rows as tuples."""
+        with psycopg.connect(self.dsn, autocommit=autocommit) as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                if cur.description:
+                    return cur.fetchall()
+                return []

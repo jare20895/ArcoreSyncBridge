@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqladmin import Admin
 
-from app.api.endpoints import database_instances, sharepoint_connections, provisioning, sharepoint_discovery, sync_definitions, moves, ops
+from app.api.endpoints import database_instances, sharepoint_connections, provisioning, sharepoint_discovery, sync_definitions, moves, ops, replication
 from app.db.session import engine
 from app.admin import (
     DatabaseInstanceAdmin,
@@ -75,6 +75,7 @@ app.include_router(sharepoint_discovery.router, prefix="/api/v1/sharepoint-disco
 app.include_router(sync_definitions.router, prefix="/api/v1/sync-definitions", tags=["sync-definitions"])
 app.include_router(moves.router, prefix="/api/v1/moves", tags=["moves"])
 app.include_router(ops.router, prefix="/api/v1/ops", tags=["ops"])
+app.include_router(replication.router, prefix="/api/v1/replication", tags=["replication"])
 
 @app.get("/health")
 async def health_check():
