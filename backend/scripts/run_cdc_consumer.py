@@ -1,10 +1,12 @@
 import sys
-import os
+from pathlib import Path
+
+# Add backend to path (supports repo root or backend dir execution)
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(BACKEND_ROOT))
+
 from app.db.session import SessionLocal
 from app.services.cdc_consumer import CDCConsumer
-
-# Add backend to path
-sys.path.append(os.getcwd())
 
 def run_consumer():
     db = SessionLocal()

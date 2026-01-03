@@ -4,23 +4,70 @@ import os
 import threading
 import requests # Added for API calls
 from uuid import uuid4
-from datetime import datetime
+from pathlib import Path
 
-# Add backend to path
-sys.path.append(os.path.join(os.getcwd(), 'backend'))
+# Add backend to path (supports repo root or backend dir execution)
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(BACKEND_ROOT))
 
 from app.db.session import SessionLocal
-from app.models.core import DatabaseInstance, SyncDefinition, SyncLedgerEntry, SyncTarget, SharePointConnection, FieldMapping
+from app.models.core import DatabaseInstance, SyncDefinition, SyncTarget, SharePointConnection, FieldMapping
 from app.services.cdc import CDCService
 from app.services.cdc_consumer import CDCConsumer
 from sqlalchemy import text # Added for raw SQL execution
 from unittest.mock import MagicMock
 
-API_BASE_URL = "http://localhost:8000/api/v1" # Backend API (internal access)
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1") # Backend API (internal access)
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+DB_HOST = os.environ.get("POSTGRES_HOST", "db")
+DB_PORT = int(os.environ.get("POSTGRES_PORT", "5432"))
+DB_NAME = os.environ.get("POSTGRES_DB", "arcore_syncbridge")
+DB_USER = os.environ.get("POSTGRES_USER", "arcore")
+DB_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "arcore_password")
+
+def ensure_benchmark_table(db):
+    exists = db.execute(text("SELECT to_regclass('public.benchmark_items')")).scalar()
+    if exists:
+        return
+    db.execute(text(
+        "CREATE TABLE benchmark_items ("
+        "id SERIAL PRIMARY KEY, "
+        "name TEXT, "
+        "sku TEXT, "
+        "description TEXT, "
+        "price DECIMAL, "
+        "updated_at TIMESTAMP DEFAULT NOW()"
+        ")"
+    ))
+    db.commit()
+
+def ensure_publication(db):
+    exists = db.execute(text("SELECT 1 FROM pg_publication WHERE pubname = 'arcore_cdc_pub'")).first()
+    if exists:
+        return
+    db.execute(text("CREATE PUBLICATION arcore_cdc_pub FOR ALL TABLES"))
+    db.commit()
+
+def ensure_sharepoint_connection(db):
+    conn = db.query(SharePointConnection).first()
+    if conn:
+        return conn
+    conn = SharePointConnection(
+        tenant_id="mock-tenant",
+        client_id="mock-client",
+        client_secret="mock-secret",
+        scopes=["https://graph.microsoft.com/.default"],
+        status="ACTIVE",
+    )
+    db.add(conn)
+    db.commit()
+    return conn
 
 def test_cdc_flow():
     print("Setting up test data...")
     db = SessionLocal()
+    ensure_benchmark_table(db)
+    ensure_publication(db)
     
     # 1. Setup Instance, SyncDef, Connection
     instance_id = uuid4()
@@ -35,11 +82,11 @@ def test_cdc_flow():
     instance = DatabaseInstance(
         id=instance_id,
         instance_label=f"cdc_test_{uuid4()}",
-        host="db",
-        port=5432,
-        db_name="arcore_syncbridge",
-        username="arcore",
-        password="arcore_password",
+        host=DB_HOST,
+        port=DB_PORT,
+        db_name=DB_NAME,
+        username=DB_USER,
+        password=DB_PASSWORD,
         replication_slot_name=f"test_slot_{str(uuid4()).replace('-','_')}"
     )
     db.add(instance)
@@ -64,13 +111,14 @@ def test_cdc_flow():
     db.add(SyncSource(sync_def_id=sync_def_id, database_instance_id=instance_id))
     
     # Target
-    conn = db.query(SharePointConnection).first() # Grab any active connection
-    if not conn:
-        print("No SharePointConnection found. Please create one.")
-        db.rollback()
-        db.close()
-        return
-    db.add(SyncTarget(sync_def_id=sync_def_id, target_list_id=sync_def.target_list_id, sharepoint_connection_id=conn.id, site_id="mock-site-id"))
+    conn = ensure_sharepoint_connection(db)
+    db.add(SyncTarget(
+        sync_def_id=sync_def_id,
+        target_list_id=sync_def.target_list_id,
+        sharepoint_connection_id=conn.id,
+        site_id="mock-site-id",
+        is_default=True
+    ))
     
     # Mappings
     db.add(FieldMapping(sync_def_id=sync_def_id, source_column_name="name", target_column_name="Title", source_column_id=uuid4(), target_column_id=uuid4(), target_type="Text"))
@@ -124,11 +172,16 @@ def test_cdc_flow():
     # 5. Start Consumer (Mocked Graph)
     print("Starting Consumer...")
     
-    consumer = CDCConsumer(SessionLocal())
+    def mock_content_service_factory(_conn, _site_id, _list_id):
+        service = MagicMock()
+        service.create_item.return_value = "1"
+        return service
+
+    consumer = CDCConsumer(SessionLocal(), content_service_factory=mock_content_service_factory)
     
     print("Checking Redis for events...")
     import redis
-    r = redis.Redis(host='redis', port=6379) # Connect to internal Redis service
+    r = redis.Redis.from_url(REDIS_URL)
     
     events = []
     found_insert_event = False
@@ -179,6 +232,7 @@ def test_cdc_flow():
 
     # Cleanup: Drop slot
     print("Dropping replication slot...")
+    db.close()
 
 if __name__ == "__main__":
     test_cdc_flow()

@@ -1,11 +1,10 @@
 import sys
-import os
-import time
-import signal
 from uuid import UUID
+from pathlib import Path
 
-# Add backend to path (if running from backend dir)
-sys.path.append(os.getcwd())
+# Add backend to path (supports repo root or backend dir execution)
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(BACKEND_ROOT))
 
 from app.db.session import SessionLocal
 from app.models.core import DatabaseInstance

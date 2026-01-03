@@ -3,6 +3,8 @@ import logging
 import redis
 import os
 import json
+import uuid
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from sqlalchemy.orm import Session
@@ -18,7 +20,7 @@ import hashlib
 logger = logging.getLogger(__name__)
 
 class CDCConsumer:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, content_service_factory=None):
         self.db = db
         self.redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
         self.redis = redis.Redis.from_url(self.redis_url)
@@ -26,6 +28,7 @@ class CDCConsumer:
         self.group_name = "arcore_cdc_group"
         self.consumer_name = f"consumer_{os.getpid()}"
         self.decoder = PgOutputDecoder()
+        self.content_service_factory = content_service_factory
         
         # Cache for SyncDefs
         self._sync_def_cache = {} # (instance_id, schema, table) -> SyncDefinition
@@ -68,7 +71,8 @@ class CDCConsumer:
     def process_message(self, message_id, data):
         # data is dict of bytes
         payload = data.get(b'payload')
-        instance_id_str = data.get(b'instance_id').decode('utf-8')
+        instance_id_bytes = data.get(b'instance_id')
+        instance_id_str = instance_id_bytes.decode('utf-8') if instance_id_bytes else ""
         
         if not payload:
             return
@@ -97,7 +101,7 @@ class CDCConsumer:
         # Throttle check? 
         # Ideally we check Redis for last processed time for this sync_def.
         
-        self._apply_change(sync_def, op_type, row_data)
+        self._apply_change(sync_def, op_type, row_data, instance_id_str)
 
     def _get_sync_def(self, instance_id: str, schema: str, table: str) -> Optional[SyncDefinition]:
         # Cache refresh every 60s
@@ -121,7 +125,7 @@ class CDCConsumer:
         
         self._last_cache_update = time.time()
 
-    def _apply_change(self, sync_def: SyncDefinition, op_type: str, row_data: dict):
+    def _apply_change(self, sync_def: SyncDefinition, op_type: str, row_data: dict, instance_id_str: str):
         # Resolve Target
         # Sharding support
         target_list_id = None
@@ -164,9 +168,12 @@ class CDCConsumer:
         if not conn:
             return
 
-        client_secret = os.environ.get("AZURE_CLIENT_SECRET", "")
-        graph = GraphClient(conn.tenant_id, conn.client_id, client_secret, conn.authority_host)
-        content_service = SharePointContentService(graph)
+        if self.content_service_factory:
+            content_service = self.content_service_factory(conn, site_id, target_list_id)
+        else:
+            client_secret = os.environ.get("AZURE_CLIENT_SECRET", "")
+            graph = GraphClient(conn.tenant_id, conn.client_id, client_secret, conn.authority_host)
+            content_service = SharePointContentService(graph)
 
         # Map Fields
         sp_data = {}
@@ -180,7 +187,7 @@ class CDCConsumer:
                 pg_pk_col = fm.source_column_name
                 
         pg_pk_val = row_data.get(pg_pk_col)
-        if not pg_pk_val:
+        if pg_pk_val is None:
             # Cannot identify row
             return
             
@@ -225,12 +232,17 @@ class CDCConsumer:
             # Create
             try:
                 sp_id = content_service.create_item(site_id, target_list_id, sp_data)
+                try:
+                    source_instance_id = UUID(instance_id_str) if instance_id_str else uuid.uuid4()
+                except ValueError:
+                    source_instance_id = uuid.uuid4()
+
                 new_entry = SyncLedgerEntry(
                     sync_def_id=sync_def.id,
                     source_identity_hash=id_hash,
                     source_identity=str(pg_pk_val),
                     source_key_strategy="PRIMARY_KEY",
-                    source_instance_id=UUID(instance_id_str) if instance_id_str else uuid.uuid4(), # Should parse from arg
+                    source_instance_id=source_instance_id,
                     sp_list_id=target_list_id,
                     sp_item_id=int(sp_id),
                     content_hash=content_hash,

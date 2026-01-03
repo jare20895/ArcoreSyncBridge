@@ -1,3 +1,21 @@
+import logging
+import os
+import threading
+import time
+from typing import Optional
+from uuid import UUID
+
+import psycopg2
+import redis
+from psycopg2.extras import LogicalReplicationConnection
+from sqlalchemy.orm import Session
+
+from app.models.core import DatabaseInstance
+from app.services.database import DatabaseClient
+
+logger = logging.getLogger(__name__)
+
+
 class CDCService:
     def __init__(self, db_session: Session, instance_id: UUID, stop_event: Optional[threading.Event] = None):
         self.db = db_session
@@ -44,9 +62,9 @@ class CDCService:
                 
                 # Start
                 cur.start_replication(
-                    slot_name=self.slot_name, 
-                    start_lsn=0 if self.start_lsn == "0/0" else int(self.start_lsn.replace('/',''), 16) if '/' in self.start_lsn else 0, 
-                    decode=False, # We want raw bytes for pgoutput
+                    slot_name=self.slot_name,
+                    start_lsn=self._lsn_to_int(self.start_lsn),
+                    decode=False,  # We want raw bytes for pgoutput
                     options=options
                 )
                 
@@ -78,8 +96,6 @@ class CDCService:
         except Exception as e:
             logger.error(f"CDC Worker Failed: {e}")
             raise
-        finally:
-            conn.close() # Ensure connection is closed
 
     def _handle_message(self, msg):
         event_data = {
@@ -99,3 +115,12 @@ class CDCService:
         
         self.instance.last_wal_lsn = lsn_str
         self.db.commit()
+
+    @staticmethod
+    def _lsn_to_int(lsn: Optional[str]) -> int:
+        if not lsn or lsn == "0/0":
+            return 0
+        if "/" not in lsn:
+            return int(lsn, 16)
+        high_str, low_str = lsn.split("/", 1)
+        return (int(high_str, 16) << 32) + int(low_str, 16)
