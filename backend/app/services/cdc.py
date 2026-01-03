@@ -1,6 +1,8 @@
 import time
 import logging
 import psycopg
+import redis
+import os
 from psycopg.replication import LogicalReplicationConnection
 from typing import Optional
 from uuid import UUID
@@ -18,17 +20,19 @@ class CDCService:
         if not self.instance:
             raise ValueError(f"Database instance {instance_id} not found")
         
+        # Redis Connection
+        self.redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+        self.redis = redis.Redis.from_url(self.redis_url)
+        self.stream_key = "arcore:cdc:events"
+        self.max_stream_len = 10000 # Backpressure limit
+
         # Use existing client logic to resolve credentials/dsn
-        # We need to inject 'replication=True' into the connection string or connection factory?
-        # DatabaseClient stores 'dsn'. We can reuse it but need to pass `replication=True` to connect.
         self.client = DatabaseClient(self.instance)
         
         # Determine Slot Name
         self.slot_name = self.instance.replication_slot_name or f"arcore_cdc_{str(self.instance.id).replace('-', '_')}"
         
         # Determine Start LSN from metadata or cursor
-        # We need a Global Cursor for this Instance's Slot?
-        # OR we store it on DatabaseInstance (last_wal_lsn)
         self.start_lsn = self.instance.last_wal_lsn or "0/0"
 
     def run(self):
@@ -40,9 +44,6 @@ class CDCService:
         try:
             with psycopg.connect(dsn, autocommit=True, row_factory=dict, connection_factory=LogicalReplicationConnection) as conn:
                 # 1. Create Slot if not exists (handled by Ops API usually, but auto-create is nice for dev)
-                # Check slot existence?
-                # conn.create_replication_slot(self.slot_name, output_plugin='pgoutput') 
-                # Better to assume it exists or catch error.
                 
                 # Options for pgoutput: proto_version, publication_names
                 # We assume a publication 'arcore_cdc_pub' exists.
@@ -62,18 +63,17 @@ class CDCService:
                 )
                 
                 for msg in gen:
+                    # Check Backpressure
+                    while self.redis.xlen(self.stream_key) > self.max_stream_len:
+                        logger.warning("Backpressure: Stream full. Pausing ingestion.")
+                        time.sleep(1)
+                        # TODO: Check if we should stop?
+
                     # Process Message
                     if msg.payload:
                         self._handle_message(msg)
                     
-                    # Update status periodically or after commit
-                    # send_feedback happens automatically in psycopg loop usually if we iterate?
-                    # msg.cursor.send_feedback(flush_lsn=msg.wal_end)
-                    
                     # Persist LSN to DB (Checkpoint)
-                    # Optimization: Don't write to DB every event. Buffer/Batch.
-                    # For prototype: Write to instance metadata.
-                    
                     self._checkpoint(msg.wal_end)
 
         except Exception as e:
@@ -81,24 +81,18 @@ class CDCService:
             raise
 
     def _handle_message(self, msg):
-        # msg.payload is bytes (pgoutput format) if using low-level stream?
-        # Psycopg 3 might not parse pgoutput body automatically?
-        # "The payload is a bytes object... The client is responsible for parsing it."
+        # We push the raw payload to Redis. The consumer will decode it.
+        # This decouples decoding overhead from the critical ingestion loop.
+        # We store LSN with the event.
         
-        # Parsing pgoutput in Python is complex.
-        # Alternative: Use 'wal2json' plugin? It sends JSON text.
-        # Much easier for Python.
+        event_data = {
+            "lsn": msg.wal_end,
+            "payload": msg.payload, # Bytes
+            "instance_id": str(self.instance_id)
+        }
         
-        # Let's switch ADR/Design to prefer 'wal2json' if available, as it simplifies this step massively.
-        # If wal2json is not installed in the postgres image, we are stuck.
-        # postgres:15-alpine does NOT include wal2json by default.
-        # We would need a custom Dockerfile for DB to install it.
-        
-        # If we stick to 'pgoutput', we need a parser.
-        # There are libraries like `pgoutput`.
-        
-        # For this prototype, just logging the size.
-        logger.debug(f"Received WAL message: {len(msg.payload)} bytes")
+        self.redis.xadd(self.stream_key, event_data)
+        logger.debug(f"Queued WAL message: {len(msg.payload)} bytes")
 
     def _checkpoint(self, lsn: int):
         # Update DB Instance state

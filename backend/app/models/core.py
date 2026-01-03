@@ -67,6 +67,8 @@ class SyncDefinition(Base):
     sharding_policy: Mapped[dict] = mapped_column(JSONB, default={})
     
     cdc_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_paused: Mapped[bool] = mapped_column(Boolean, default=False)
+    rate_limit_ms: Mapped[int] = mapped_column(Integer, default=0)
     
     sources: Mapped[List["SyncSource"]] = relationship(back_populates="sync_definition")
     targets: Mapped[List["SyncTarget"]] = relationship(back_populates="sync_definition")
