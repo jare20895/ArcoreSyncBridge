@@ -26,6 +26,18 @@ export const deleteDatabaseInstance = async (id: string) => {
   return res.data;
 };
 
+export const testDatabaseConnection = async (data: any) => {
+  // If instance_id is provided (editing mode with no password), use stored credentials
+  if (data.instance_id && !data.password) {
+    const res = await api.post(`/database-instances/${data.instance_id}/test-connection`);
+    return res.data;
+  }
+  // Otherwise test with provided credentials
+  const { instance_id, ...connectionData } = data;
+  const res = await api.post('/database-instances/test-connection', connectionData);
+  return res.data;
+};
+
 export const getConnections = async () => {
   const res = await api.get('/sharepoint-connections/');
   return res.data;

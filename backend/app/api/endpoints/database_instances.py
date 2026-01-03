@@ -14,7 +14,8 @@ from app.schemas.database_instance import (
     DatabaseInstanceCreate,
     DatabaseInstanceRead,
     DatabaseInstanceUpdate,
-    ConnectionTestResult
+    ConnectionTestResult,
+    ConnectionTestRequest
 )
 from app.schemas.introspection import SchemaSnapshot
 from app.services.introspection import introspect_database
@@ -87,42 +88,72 @@ def delete_database_instance(
     db_instance = db.get(DatabaseInstance, instance_id)
     if not db_instance:
         raise HTTPException(status_code=404, detail="Database instance not found")
-    
+
     db.delete(db_instance)
     db.commit()
     return None
+
+@router.post("/test-connection", response_model=ConnectionTestResult)
+def test_connection_raw(
+    connection: ConnectionTestRequest
+):
+    """
+    Test database connection with provided credentials (before creating instance).
+    """
+    import psycopg2
+    try:
+        # Attempt to connect to the database
+        conn = psycopg2.connect(
+            host=connection.host,
+            port=connection.port,
+            database=connection.db_name,
+            user=connection.username,
+            password=connection.password,
+            connect_timeout=5
+        )
+        conn.close()
+        return ConnectionTestResult(success=True, message="Connection successful!")
+    except psycopg2.OperationalError as e:
+        return ConnectionTestResult(success=False, message=f"Connection failed: {str(e)}")
+    except Exception as e:
+        return ConnectionTestResult(success=False, message=f"Unexpected error: {str(e)}")
 
 @router.post("/{instance_id}/test-connection", response_model=ConnectionTestResult)
 def test_connection(
     instance_id: UUID,
     db: Session = Depends(get_db)
 ):
+    """
+    Test database connection using stored credentials from the instance.
+    """
     db_instance = db.get(DatabaseInstance, instance_id)
     if not db_instance:
         raise HTTPException(status_code=404, detail="Database instance not found")
 
-    # Construct connection string for the target instance
-    # Note: In a real scenario, we would need credentials. 
-    # For now, I will assume we are testing connectivity to the *same* DB or use placeholder creds
-    # if they were stored (they are not currently in the model, just host/port).
-    # TO FIX: The spec implies we manage connections, but the model doesn't have user/pass.
-    # I will assume standard 'postgres' user or similar for this check, or update the model later.
-    # For this pass, I'll attempt a basic TCP check or assume credentials are env-based for the "System" DB.
-    # Wait, the spec says "Operator selects the parent application and logical database."
-    # The `connection_profiles` mentioned in the design doc store credentials.
-    # My `DatabaseInstance` model from `core.py` missed the `connection_profile_id` or similar?
-    # Checking `core.py`... `DatabaseInstance` has host/port. `SharePointConnection` is separate.
-    # The Implementation Specs 1.1 `DatabaseInstance` does NOT show credentials.
-    # It seems credentials might be separate or managed via standard PG env vars/vault.
-    # For this "Health Check", I will implement a simple network reachability test to host:port.
-    
-    import socket
+    # Check if we have all required credentials
+    if not db_instance.db_name or not db_instance.username:
+        return ConnectionTestResult(
+            success=False,
+            message="Missing database name or username in stored instance"
+        )
+
+    import psycopg2
     try:
-        sock = socket.create_connection((db_instance.host, db_instance.port), timeout=5)
-        sock.close()
-        return ConnectionTestResult(success=True, message="Connection successful (Network Reachable)")
-    except Exception as e:
+        # Attempt to connect using stored credentials
+        conn = psycopg2.connect(
+            host=db_instance.host,
+            port=db_instance.port,
+            database=db_instance.db_name,
+            user=db_instance.username,
+            password=db_instance.password or "",
+            connect_timeout=5
+        )
+        conn.close()
+        return ConnectionTestResult(success=True, message="Connection successful (using stored credentials)")
+    except psycopg2.OperationalError as e:
         return ConnectionTestResult(success=False, message=f"Connection failed: {str(e)}")
+    except Exception as e:
+        return ConnectionTestResult(success=False, message=f"Unexpected error: {str(e)}")
 
 @router.get("/{instance_id}/schema", response_model=SchemaSnapshot)
 def get_instance_schema(

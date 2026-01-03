@@ -9,30 +9,68 @@ from sqlalchemy.sql import func
 from app.db.base import Base
 
 class DatabaseInstance(Base):
+    """
+    Represents physical database endpoints. Multiple instances allow multi-source sync
+    and location changes without recreating sync items.
+    """
     __tablename__ = "database_instances"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    database_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("databases.id", ondelete="CASCADE"),
+        nullable=True  # Made optional for backward compatibility
+    )
     instance_label: Mapped[str] = mapped_column(String, unique=True)
     host: Mapped[str] = mapped_column(String)
     port: Mapped[int] = mapped_column(Integer, default=5432)
-    
+    database_name_override: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    # Credentials
     db_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     username: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     password: Mapped[Optional[str]] = mapped_column(String, nullable=True) # Encrypted
-    
-    role: Mapped[str] = mapped_column(String, default="PRIMARY") # PRIMARY, REPLICA
+
+    # Config
+    config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+
+    # Role and status
+    role: Mapped[str] = mapped_column(String, default="PRIMARY") # PRIMARY, SECONDARY
     priority: Mapped[int] = mapped_column(Integer, default=1)
-    status: Mapped[str] = mapped_column(String, default="ACTIVE")
-    
+    status: Mapped[str] = mapped_column(String, default="ACTIVE") # ACTIVE, DISABLED
+
+    # Timestamps
+    valid_from: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    valid_to: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # CDC Metadata
     replication_slot_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     last_wal_lsn: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    
-    # Sync sources that use this instance
+
+    # Relationships
+    database: Mapped[Optional["Database"]] = relationship("Database", back_populates="instances")
     sync_sources: Mapped[List["SyncSource"]] = relationship(
         back_populates="database_instance",
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+    source_table_metrics: Mapped[List["SourceTableMetric"]] = relationship(
+        "SourceTableMetric",
+        back_populates="database_instance",
+        cascade="all, delete-orphan",
+        foreign_keys="SourceTableMetric.database_instance_id"
+    )
+    introspection_runs: Mapped[List["IntrospectionRun"]] = relationship(
+        "IntrospectionRun",
+        back_populates="database_instance",
+        cascade="all, delete-orphan",
+        foreign_keys="IntrospectionRun.database_instance_id"
+    )
+    schema_snapshots: Mapped[List["SchemaSnapshot"]] = relationship(
+        "SchemaSnapshot",
+        back_populates="database_instance",
+        cascade="all, delete-orphan",
+        foreign_keys="SchemaSnapshot.database_instance_id"
     )
 
 
@@ -46,7 +84,14 @@ class SharePointConnection(Base):
     authority_host: Mapped[str] = mapped_column(String, default="https://login.microsoftonline.com")
     scopes: Mapped[list] = mapped_column(JSONB) # List of scopes
     status: Mapped[str] = mapped_column(String, default="ACTIVE")
-    # Encrypted secret would be stored safely, maybe not in this table directly or encrypted
+
+    # Relationships
+    sites: Mapped[List["SharePointSite"]] = relationship(
+        "SharePointSite",
+        back_populates="connection",
+        cascade="all, delete-orphan",
+        foreign_keys="SharePointSite.connection_id"
+    )
 
 
 class SyncDefinition(Base):

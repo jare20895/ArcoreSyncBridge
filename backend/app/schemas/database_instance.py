@@ -33,6 +33,13 @@ class DatabaseInstanceRead(DatabaseInstanceBase):
     class Config:
         from_attributes = True
 
+class ConnectionTestRequest(BaseModel):
+    host: str
+    port: int = 5432
+    db_name: str
+    username: str
+    password: str
+
 class ConnectionTestResult(BaseModel):
     success: bool
     message: str
