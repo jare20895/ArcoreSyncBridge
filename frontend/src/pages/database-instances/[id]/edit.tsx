@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
-import { getDatabaseInstances, updateDatabaseInstance, testDatabaseConnection } from '../../../services/api';
+import { getDatabaseInstances, updateDatabaseInstance, testDatabaseConnection, getDatabases } from '../../../services/api';
 
 export default function EditDatabaseInstance() {
   const router = useRouter();
   const { id } = router.query;
   const [loading, setLoading] = useState(true);
+  const [databases, setDatabases] = useState<any[]>([]);
   const [formData, setFormData] = useState({
+    database_id: '',
     instance_label: '',
     host: '',
     port: 5432,
@@ -24,15 +26,21 @@ export default function EditDatabaseInstance() {
 
   useEffect(() => {
     if (!id) return;
-    loadInstance();
+    loadData();
   }, [id]);
 
-  const loadInstance = async () => {
+  const loadData = async () => {
     try {
-      const instances = await getDatabaseInstances();
+      const [instances, databasesData] = await Promise.all([
+        getDatabaseInstances(),
+        getDatabases()
+      ]);
+      setDatabases(databasesData);
+
       const instance = instances.find((inst: any) => inst.id === id);
       if (instance) {
         setFormData({
+          database_id: instance.database_id || '',
           instance_label: instance.instance_label || '',
           host: instance.host || '',
           port: instance.port || 5432,
@@ -48,7 +56,7 @@ export default function EditDatabaseInstance() {
       }
     } catch (err) {
       console.error(err);
-      setError('Failed to load instance');
+      setError('Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -98,6 +106,7 @@ export default function EditDatabaseInstance() {
     try {
       // Only include password if it was changed
       const updateData: any = {
+        database_id: formData.database_id || null,
         instance_label: formData.instance_label,
         host: formData.host,
         port: formData.port,
@@ -114,7 +123,7 @@ export default function EditDatabaseInstance() {
       }
 
       await updateDatabaseInstance(id as string, updateData);
-      router.push('/');
+      router.push('/database-instances');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to update instance');
     }
@@ -137,6 +146,26 @@ export default function EditDatabaseInstance() {
       {error && <div className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 p-3 rounded mb-4">{error}</div>}
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">
+            Database (Optional)
+          </label>
+          <select
+            name="database_id"
+            value={formData.database_id}
+            onChange={handleChange}
+            className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
+          >
+            <option value="">None (legacy instance)</option>
+            {databases.map(db => (
+              <option key={db.id} value={db.id}>{db.name} ({db.environment})</option>
+            ))}
+          </select>
+          <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-1">
+            Link this instance to a logical database definition.
+          </p>
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Label</label>
           <input

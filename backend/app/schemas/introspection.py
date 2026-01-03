@@ -7,6 +7,9 @@ class ColumnInfo(BaseModel):
     is_nullable: bool
     ordinal_position: int
     is_primary_key: bool = False
+    default_value: Optional[str] = None
+    is_identity: bool = False
+    is_unique: bool = False
 
 class TableInfo(BaseModel):
     schema_name: str

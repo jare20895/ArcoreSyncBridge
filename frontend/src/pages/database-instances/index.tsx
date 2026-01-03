@@ -1,17 +1,37 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { getDatabaseInstances, triggerFailover, deleteDatabaseInstance } from '../../services/api';
+import { getDatabaseInstances, triggerFailover, deleteDatabaseInstance, getDatabases } from '../../services/api';
 import { Database, ShieldAlert, ArrowRight, Edit, Trash2 } from 'lucide-react';
 
 export default function DatabaseInstancesList() {
   const [dbs, setDbs] = useState<any[]>([]);
+  const [databases, setDatabases] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
   const [failoverTarget, setFailoverTarget] = useState<any>(null); // Instance being promoted
   const [primaryToFail, setPrimaryToFail] = useState<string>('');
 
   useEffect(() => {
-    loadDbs();
+    loadData();
   }, []);
+
+  const loadData = async () => {
+    try {
+      const [instances, databasesData] = await Promise.all([
+        getDatabaseInstances(),
+        getDatabases()
+      ]);
+      setDbs(instances);
+
+      // Create a map of databases by ID for easy lookup
+      const dbMap = databasesData.reduce((acc: Record<string, any>, db: any) => {
+        acc[db.id] = db;
+        return acc;
+      }, {});
+      setDatabases(dbMap);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const loadDbs = () => {
     getDatabaseInstances().then(setDbs).catch(console.error);
@@ -76,6 +96,11 @@ export default function DatabaseInstancesList() {
                             {db.role === 'REPLICA' && <span className="ml-2 px-2 py-0.5 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300">REPLICA</span>}
                             {db.status === 'INACTIVE' && <span className="ml-2 px-2 py-0.5 rounded text-xs bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300">INACTIVE</span>}
                         </h3>
+                        {db.database_id && databases[db.database_id] && (
+                            <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary mt-1">
+                                Logical Database: <Link href={`/databases/${db.database_id}`} className="font-medium text-light-primary dark:text-dark-primary hover:underline">{databases[db.database_id].name}</Link>
+                            </p>
+                        )}
                         <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary font-mono">{db.host}:{db.port}</p>
                         {db.db_name && <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary">Database: <span className="font-mono">{db.db_name}</span></p>}
                         {db.username && <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary">User: <span className="font-mono">{db.username}</span></p>}

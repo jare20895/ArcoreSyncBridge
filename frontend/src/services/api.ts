@@ -92,6 +92,32 @@ export const testDatabaseConnection = async (data: any) => {
   return res.data;
 };
 
+// Data Sources (Database Inventory)
+export const getSourceTables = async (databaseId: string) => {
+  const res = await api.get('/data-sources/tables', { params: { database_id: databaseId } });
+  return res.data;
+};
+
+export const extractSourceTables = async (data: { database_id: string; instance_id: string; schema?: string }) => {
+  const res = await api.post('/data-sources/tables/extract', data);
+  return res.data;
+};
+
+export const extractSourceTableDetails = async (data: { instance_id: string; table_ids: string[] }) => {
+  const res = await api.post('/data-sources/tables/extract-details', data);
+  return res.data;
+};
+
+export const getSourceTableDetails = async (tableId: string) => {
+  const res = await api.get(`/data-sources/tables/${tableId}`);
+  return res.data;
+};
+
+export const provisionSharePointList = async (data: any) => {
+  const res = await api.post('/provisioning/list', data);
+  return res.data;
+};
+
 export const getConnections = async () => {
   const res = await api.get('/sharepoint-connections/');
   return res.data;
@@ -107,8 +133,60 @@ export const updateConnection = async (id: string, data: any) => {
   return res.data;
 };
 
+// Data Targets (SharePoint Inventory)
+export const getSharePointSites = async (connectionId?: string) => {
+  const res = await api.get('/data-targets/sites', {
+    params: connectionId ? { connection_id: connectionId } : {}
+  });
+  return res.data;
+};
+
+export const extractSharePointSites = async (connectionId: string, query: string = "*") => {
+  const res = await api.post('/data-targets/sites/extract', null, {
+    params: { connection_id: connectionId, query }
+  });
+  return res.data;
+};
+
+export const resolveSharePointSite = async (data: { connection_id: string; hostname: string; site_path: string }) => {
+  const res = await api.post('/data-targets/sites/resolve', data);
+  return res.data;
+};
+
+export const getSharePointLists = async (siteId: string) => {
+  const res = await api.get(`/data-targets/sites/${siteId}/lists`);
+  return res.data;
+};
+
+export const extractSharePointLists = async (siteId: string) => {
+  const res = await api.post(`/data-targets/sites/${siteId}/lists/extract`);
+  return res.data;
+};
+
+export const getSharePointListsBySourceTable = async (tableId: string) => {
+  const res = await api.get('/data-targets/lists/by-source', {
+    params: { source_table_id: tableId }
+  });
+  return res.data;
+};
+
+export const getSharePointColumns = async (listId: string) => {
+  const res = await api.get(`/data-targets/lists/${listId}/columns`);
+  return res.data;
+};
+
+export const extractSharePointColumns = async (listId: string) => {
+  const res = await api.post(`/data-targets/lists/${listId}/columns/extract`);
+  return res.data;
+};
+
 export const getSyncDefinitions = async () => {
   const res = await api.get('/sync-definitions/');
+  return res.data;
+};
+
+export const getSyncDefinition = async (id: string) => {
+  const res = await api.get(`/sync-definitions/${id}`);
   return res.data;
 };
 
@@ -119,6 +197,11 @@ export const createSyncDefinition = async (data: any) => {
 
 export const updateSyncDefinition = async (id: string, data: any) => {
   const res = await api.put(`/sync-definitions/${id}`, data);
+  return res.data;
+};
+
+export const deleteSyncDefinition = async (id: string) => {
+  const res = await api.delete(`/sync-definitions/${id}`);
   return res.data;
 };
 

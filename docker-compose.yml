@@ -33,6 +33,8 @@ services:
       - "8055:8000"
     volumes:
       - ./backend:/app
+    env_file:
+      - ./backend/.env
     environment:
       - POSTGRES_USER=arcore
       - POSTGRES_PASSWORD=arcore_password

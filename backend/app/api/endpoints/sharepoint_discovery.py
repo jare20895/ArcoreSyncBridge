@@ -2,14 +2,17 @@ from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 from app.api.endpoints.database_instances import get_db
 from app.models.core import SharePointConnection
+from app.models.inventory import SharePointSite, SharePointList
 from app.services.graph import GraphClient
 from app.services.provisioner import SharePointProvisioner
+from app.services.sharepoint_discovery import SharePointDiscoveryService
 
 router = APIRouter()
 
-def get_provisioner(connection_id: UUID, db: Session) -> SharePointProvisioner:
+def get_graph_client(connection_id: UUID, db: Session) -> GraphClient:
     conn = db.get(SharePointConnection, connection_id)
     if not conn:
         raise HTTPException(status_code=404, detail="SharePoint connection not found")
@@ -21,15 +24,96 @@ def get_provisioner(connection_id: UUID, db: Session) -> SharePointProvisioner:
          secret = os.environ.get("AZURE_CLIENT_SECRET", "")
     
     try:
-        graph = GraphClient(
+        return GraphClient(
             tenant_id=conn.tenant_id,
             client_id=conn.client_id,
             client_secret=secret,
             authority_host=conn.authority_host
         )
-        return SharePointProvisioner(graph)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Graph init failed: {str(e)}")
+
+def get_provisioner(connection_id: UUID, db: Session) -> SharePointProvisioner:
+    graph = get_graph_client(connection_id, db)
+    return SharePointProvisioner(graph)
+
+def get_discovery_service(connection_id: UUID, db: Session) -> SharePointDiscoveryService:
+    graph = get_graph_client(connection_id, db)
+    return SharePointDiscoveryService(db, graph)
+
+# --- Discovery / Extraction Endpoints ---
+
+@router.post("/{connection_id}/sites/extract")
+def extract_sites(
+    connection_id: UUID,
+    query: str = "*",
+    db: Session = Depends(get_db)
+):
+    """Crawl and store SharePoint sites."""
+    svc = get_discovery_service(connection_id, db)
+    try:
+        sites = svc.extract_sites(connection_id, query)
+        return {"count": len(sites), "sites": [s.web_url for s in sites]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Site extraction failed: {str(e)}")
+
+@router.post("/{connection_id}/sites/{site_db_id}/lists/extract")
+def extract_lists(
+    connection_id: UUID,
+    site_db_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """Crawl and store Lists for a specific stored site."""
+    svc = get_discovery_service(connection_id, db)
+    try:
+        lists = svc.extract_lists(site_db_id)
+        return {"count": len(lists), "lists": [l.display_name for l in lists]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"List extraction failed: {str(e)}")
+
+@router.get("/{connection_id}/sites")
+def list_stored_sites(
+    connection_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """List sites previously extracted to inventory."""
+    sites = db.execute(
+        select(SharePointSite).where(SharePointSite.connection_id == connection_id)
+    ).scalars().all()
+    
+    return [
+        {
+            "id": s.id,
+            "hostname": s.hostname,
+            "site_path": s.site_path,
+            "web_url": s.web_url,
+            "status": s.status
+        }
+        for s in sites
+    ]
+
+@router.get("/{connection_id}/sites/{site_db_id}/lists/stored")
+def list_stored_lists(
+    connection_id: UUID,
+    site_db_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """List lists previously extracted for a site."""
+    lists = db.execute(
+        select(SharePointList).where(SharePointList.site_id == site_db_id)
+    ).scalars().all()
+    
+    return [
+        {
+            "id": l.id,
+            "display_name": l.display_name,
+            "description": l.description,
+            "is_provisioned": l.is_provisioned
+        }
+        for l in lists
+    ]
+
+# --- Direct Graph Passthrough (Legacy/Realtime) ---
 
 @router.get("/{connection_id}/sites/resolve")
 def resolve_site(

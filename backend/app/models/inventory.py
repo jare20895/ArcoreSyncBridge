@@ -231,6 +231,11 @@ class SharePointList(Base):
     template: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     is_provisioned: Mapped[bool] = mapped_column(Boolean, default=False)
     last_provisioned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String, default="ACTIVE") # ACTIVE, DELETED
+    source_table_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("database_tables.id", ondelete="SET NULL"),
+        nullable=True
+    )
 
     # Relationships
     site: Mapped["SharePointSite"] = relationship(back_populates="lists")

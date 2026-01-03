@@ -45,7 +45,11 @@ class GraphClient:
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
         }
-        
+
+        print(f"[DEBUG] Graph API Request: {method} {url}")
+        if json_body:
+            print(f"[DEBUG] Request Body: {json_body}")
+
         # Basic retry logic for throttling (429) or temporary server errors (503)
         max_retries = 3
         for attempt in range(max_retries):
@@ -57,12 +61,23 @@ class GraphClient:
                 json=json_body,
                 timeout=30
             )
-            
+
+            print(f"[DEBUG] Response Status: {resp.status_code}")
+            if resp.status_code >= 400:
+                print(f"[DEBUG] Error Response: {resp.text}")
+
             if resp.status_code in (429, 503):
                 retry_after = int(resp.headers.get("Retry-After", 5))
                 time.sleep(min(retry_after, 30))
                 continue
-            
+
+            if resp.status_code == 403:
+                raise RuntimeError(
+                    f"Graph {method} {path} failed [403] - Access Denied. "
+                    "Ensure the App Registration has 'Sites.ReadWrite.All' (Application) permission "
+                    "and Admin Consent is granted. See docs/guides/admin/sharepoint_setup.md."
+                )
+
             if resp.status_code >= 400:
                 raise RuntimeError(f"Graph {method} {path} failed [{resp.status_code}]: {resp.text}")
             

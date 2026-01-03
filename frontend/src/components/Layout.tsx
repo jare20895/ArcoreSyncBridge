@@ -5,6 +5,8 @@ import { cn } from '../lib/utils';
 import { 
   LayoutDashboard, 
   Database, 
+  Table,
+  Target,
   RefreshCw, 
   Activity, 
   ShieldCheck, 
@@ -22,6 +24,8 @@ interface LayoutProps {
 const TABS = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Connections', href: '/database-instances', icon: Database },
+  { name: 'Data Sources', href: '/data-sources', icon: Table },
+  { name: 'Data Targets', href: '/data-targets', icon: Target },
   { name: 'Sync Definitions', href: '/sync-definitions', icon: RefreshCw },
   { name: 'Runs & Ledger', href: '/runs', icon: Activity },
   { name: 'Governance', href: '/governance', icon: ShieldCheck },
@@ -30,9 +34,19 @@ const TABS = [
 
 export default function Layout({ children }: LayoutProps) {
   const router = useRouter();
-  const activeTab = TABS.find(tab => 
-    tab.href === '/' ? router.pathname === '/' : router.pathname.startsWith(tab.href)
-  );
+
+  // Define connection-related routes
+  const connectionRoutes = ['/database-instances', '/applications', '/databases', '/sharepoint-connections'];
+  const isConnectionRoute = connectionRoutes.some(route => router.pathname.startsWith(route));
+
+  const activeTab = TABS.find(tab => {
+    // Special handling for Connections tab
+    if (tab.name === 'Connections' && isConnectionRoute) {
+      return true;
+    }
+    // Normal handling for other tabs
+    return tab.href === '/' ? router.pathname === '/' : router.pathname.startsWith(tab.href);
+  });
 
   const [isDarkMode, setIsDarkMode] = useState(false);
 
@@ -128,22 +142,92 @@ export default function Layout({ children }: LayoutProps) {
              <ul className="space-y-1">
                 {activeTab?.name === 'Dashboard' && (
                     <>
-                        <li><a href="#" className="block px-3 py-2 rounded bg-light-primary/5 text-light-primary font-medium">Overview</a></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary hover:bg-gray-50 dark:hover:bg-gray-800">Throughput</a></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary hover:bg-gray-50 dark:hover:bg-gray-800">Alerts</a></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary hover:bg-gray-50 dark:hover:bg-gray-800">Drift Summary</a></li>
+                        <li><a href="#" className="block px-3 py-2 rounded bg-light-primary/5 text-light-primary dark:bg-dark-primary/20 dark:text-dark-primary font-medium">Overview</a></li>
+                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Throughput</a></li>
+                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Alerts</a></li>
+                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Drift Summary</a></li>
                     </>
                 )}
                 {activeTab?.name === 'Sync Definitions' && (
                     <>
-                        <li><Link href="/sync-definitions" className="block px-3 py-2 rounded bg-light-primary/5 text-light-primary font-medium">Definitions List</Link></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary hover:bg-gray-50 dark:hover:bg-gray-800">Targets</a></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary hover:bg-gray-50 dark:hover:bg-gray-800">Field Mappings</a></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary hover:bg-gray-50 dark:hover:bg-gray-800">Sharding Rules</a></li>
+                        <li><Link href="/sync-definitions" className="block px-3 py-2 rounded bg-light-primary/5 text-light-primary dark:bg-dark-primary/20 dark:text-dark-primary font-medium">Definitions List</Link></li>
+                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Targets</a></li>
+                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Field Mappings</a></li>
+                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Sharding Rules</a></li>
+                    </>
+                )}
+                {activeTab?.name === 'Data Sources' && (
+                    <>
+                        <li><Link href="/data-sources" className="block px-3 py-2 rounded bg-light-primary/5 text-light-primary dark:bg-dark-primary/20 dark:text-dark-primary font-medium">Inventory</Link></li>
+                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Schema Extraction</a></li>
+                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Provisioning</a></li>
+                    </>
+                )}
+                {activeTab?.name === 'Data Targets' && (
+                    <>
+                        <li><Link href="/data-targets" className="block px-3 py-2 rounded bg-light-primary/5 text-light-primary dark:bg-dark-primary/20 dark:text-dark-primary font-medium">Sites</Link></li>
+                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Lists</a></li>
+                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Columns</a></li>
+                    </>
+                )}
+                {activeTab?.name === 'Connections' && (
+                    <>
+                        <li>
+                          <Link
+                            href="/applications"
+                            className={cn(
+                              "block px-3 py-2 rounded transition-colors",
+                              router.pathname.startsWith('/applications')
+                                ? "bg-light-primary/5 text-light-primary dark:bg-dark-primary/20 dark:text-dark-primary font-medium"
+                                : "text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-light-primary dark:hover:text-dark-primary"
+                            )}
+                          >
+                            Applications
+                          </Link>
+                        </li>
+                        <li>
+                          <Link
+                            href="/databases"
+                            className={cn(
+                              "block px-3 py-2 rounded transition-colors",
+                              router.pathname.startsWith('/databases')
+                                ? "bg-light-primary/5 text-light-primary dark:bg-dark-primary/20 dark:text-dark-primary font-medium"
+                                : "text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-light-primary dark:hover:text-dark-primary"
+                            )}
+                          >
+                            Databases
+                          </Link>
+                        </li>
+                        <li>
+                          <Link
+                            href="/database-instances"
+                            className={cn(
+                              "block px-3 py-2 rounded transition-colors",
+                              router.pathname.startsWith('/database-instances')
+                                ? "bg-light-primary/5 text-light-primary dark:bg-dark-primary/20 dark:text-dark-primary font-medium"
+                                : "text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-light-primary dark:hover:text-dark-primary"
+                            )}
+                          >
+                            Database Instances
+                          </Link>
+                        </li>
+                        <li>
+                          <Link
+                            href="/sharepoint-connections"
+                            className={cn(
+                              "block px-3 py-2 rounded transition-colors",
+                              router.pathname.startsWith('/sharepoint-connections')
+                                ? "bg-light-primary/5 text-light-primary dark:bg-dark-primary/20 dark:text-dark-primary font-medium"
+                                : "text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-light-primary dark:hover:text-dark-primary"
+                            )}
+                          >
+                            SharePoint Connections
+                          </Link>
+                        </li>
                     </>
                 )}
                  {/* Fallback for other tabs */}
-                 {!['Dashboard', 'Sync Definitions'].includes(activeTab?.name || '') && (
+                 {!['Dashboard', 'Sync Definitions', 'Data Sources', 'Data Targets', 'Connections'].includes(activeTab?.name || '') && (
                      <li className="text-sm text-gray-400 italic px-3">No tools available</li>
                  )}
              </ul>

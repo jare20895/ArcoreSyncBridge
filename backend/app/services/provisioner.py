@@ -72,7 +72,9 @@ class SharePointProvisioner:
     def get_site(self, hostname: str, site_path: str) -> Dict[str, Any]:
         # site_path example: "/sites/Finance"
         # Graph API format: GET /sites/{hostname}:{server-relative-path}
-        return self.graph.request("GET", f"/sites/{hostname}:{site_path}")
+        # Strip protocol if present (e.g., "https://")
+        clean_hostname = hostname.replace("https://", "").replace("http://", "").strip("/")
+        return self.graph.request("GET", f"/sites/{clean_hostname}:{site_path}")
 
     def find_list_by_display_name(self, site_id: str, display_name: str) -> Optional[Dict[str, Any]]:
         lists = self.graph.request("GET", f"/sites/{site_id}/lists")
@@ -87,6 +89,8 @@ class SharePointProvisioner:
             "description": description,
             "list": {"template": "genericList"},
         }
+        print(f"[DEBUG] Creating list at site_id: {site_id}")
+        print(f"[DEBUG] Payload: {payload}")
         return self.graph.request("POST", f"/sites/{site_id}/lists", json_body=payload)
 
     def list_columns(self, site_id: str, list_id: str) -> Dict[str, Dict[str, Any]]:
@@ -106,8 +110,10 @@ class SharePointProvisioner:
         list_display_name: str,
         description: str = "",
         skip_columns: Optional[List[str]] = None,
+        column_configurations: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         skip_columns = set(skip_columns or [])
+        column_configurations = column_configurations or {}
 
         # 1. Ensure List Exists
         lst = self.find_list_by_display_name(site_id, list_display_name)
@@ -130,6 +136,24 @@ class SharePointProvisioner:
                 continue
 
             sp_col_def = map_pg_to_sp_column(col)
+            
+            # Apply user overrides
+            if col.name in column_configurations:
+                override = column_configurations[col.name]
+                # If the override specifies a new type (e.g., 'number' instead of 'text'),
+                # we must remove conflicting type keys from the default mapping.
+                # Standard Graph column types:
+                type_keys = ["text", "number", "boolean", "dateTime", "currency", "choice", "lookup", "personOrGroup"]
+                
+                # If override has any of these keys, clear existing type keys
+                if any(k in override for k in type_keys):
+                    for k in type_keys:
+                        if k in sp_col_def:
+                            del sp_col_def[k]
+                
+                # Apply the overrides
+                sp_col_def.update(override)
+
             sp_name = sp_col_def["name"]
 
             # Check if internal name exists

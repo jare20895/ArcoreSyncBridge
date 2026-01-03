@@ -3,6 +3,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 class DatabaseInstanceBase(BaseModel):
+    database_id: Optional[UUID] = Field(None, description="ID of the logical database this instance belongs to")
     instance_label: str = Field(..., description="Unique label for this database instance")
     host: str = Field(..., description="Hostname or IP address")
     port: int = Field(5432, description="Port number")
@@ -16,6 +17,7 @@ class DatabaseInstanceCreate(DatabaseInstanceBase):
     password: Optional[str] = Field(None, description="Database Password")
 
 class DatabaseInstanceUpdate(BaseModel):
+    database_id: Optional[UUID] = None
     instance_label: Optional[str] = None
     host: Optional[str] = None
     port: Optional[int] = None

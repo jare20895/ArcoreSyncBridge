@@ -82,6 +82,7 @@ class SharePointConnection(Base):
     client_id: Mapped[str] = mapped_column(String)
     client_secret: Mapped[Optional[str]] = mapped_column(String, nullable=True) # TODO: Encrypt this
     authority_host: Mapped[str] = mapped_column(String, default="https://login.microsoftonline.com")
+    hostname: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     scopes: Mapped[list] = mapped_column(JSONB) # List of scopes
     status: Mapped[str] = mapped_column(String, default="ACTIVE")
 

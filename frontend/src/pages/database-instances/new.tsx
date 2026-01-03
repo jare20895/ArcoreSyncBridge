@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { createDatabaseInstance, testDatabaseConnection } from '../../services/api';
+import Link from 'next/link';
+import { createDatabaseInstance, testDatabaseConnection, getDatabases } from '../../services/api';
 
 export default function NewDatabaseInstance() {
   const router = useRouter();
+  const [databases, setDatabases] = useState<any[]>([]);
   const [formData, setFormData] = useState({
+    database_id: '',
     instance_label: '',
     host: '',
     port: 5432,
@@ -18,6 +21,20 @@ export default function NewDatabaseInstance() {
   const [error, setError] = useState('');
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testMessage, setTestMessage] = useState('');
+
+  useEffect(() => {
+    loadDatabases();
+  }, []);
+
+  const loadDatabases = async () => {
+    try {
+      const data = await getDatabases();
+      setDatabases(data);
+    } catch (err) {
+      console.error(err);
+      setError('Failed to load databases');
+    }
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -45,8 +62,13 @@ export default function NewDatabaseInstance() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await createDatabaseInstance(formData);
-      router.push('/');
+      // Convert empty string to null for database_id
+      const submitData = {
+        ...formData,
+        database_id: formData.database_id || null
+      };
+      await createDatabaseInstance(submitData);
+      router.push('/database-instances');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to create instance');
     }
@@ -58,6 +80,28 @@ export default function NewDatabaseInstance() {
       {error && <div className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 p-3 rounded mb-4">{error}</div>}
       
       <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">
+            Database (Optional)
+          </label>
+          <select
+            name="database_id"
+            value={formData.database_id}
+            onChange={handleChange}
+            className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
+          >
+            <option value="">None (legacy instance)</option>
+            {databases.map(db => (
+              <option key={db.id} value={db.id}>{db.name} ({db.environment})</option>
+            ))}
+          </select>
+          <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-1">
+            Link this instance to a logical database definition. {databases.length === 0 && (
+              <Link href="/databases/new" className="text-light-primary dark:text-dark-primary hover:underline">Create a database first</Link>
+            )}
+          </p>
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Label</label>
           <input

@@ -1,14 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { createSyncDefinition } from '../../services/api';
+import { 
+    createSyncDefinition, 
+    getDatabases, 
+    getSourceTables, 
+    getSharePointListsBySourceTable,
+    getSharePointSites,
+    getSharePointLists
+} from '../../services/api';
 import Link from 'next/link';
 
 export default function NewSyncDefinition() {
   const router = useRouter();
+  
+  // Catalogs
+  const [databases, setDatabases] = useState<any[]>([]);
+  const [tables, setTables] = useState<any[]>([]);
+  const [sites, setSites] = useState<any[]>([]);
+  const [targetLists, setTargetLists] = useState<any[]>([]);
+
+  // Selection State
+  const [selectedDatabaseId, setSelectedDatabaseId] = useState('');
+  const [selectedSiteId, setSelectedSiteId] = useState('');
+
   const [formData, setFormData] = useState({
     name: '',
-    source_table_id: '', // UUID
-    target_list_id: '', // UUID, optional
+    source_table_id: '',
+    target_list_id: '',
     sync_mode: 'ONE_WAY_PUSH',
     conflict_policy: 'SOURCE_WINS',
     key_strategy: 'PRIMARY_KEY',
@@ -26,6 +44,55 @@ export default function NewSyncDefinition() {
     field_mappings: []
   });
   const [error, setError] = useState('');
+
+  // 1. Load Databases & Sites on Mount
+  useEffect(() => {
+    getDatabases().then(setDatabases).catch(console.error);
+    getSharePointSites().then(setSites).catch(console.error);
+  }, []);
+
+  // 2. Load Tables when Database selected
+  useEffect(() => {
+      if (!selectedDatabaseId) {
+          setTables([]);
+          return;
+      }
+      getSourceTables(selectedDatabaseId).then(setTables).catch(console.error);
+  }, [selectedDatabaseId]);
+
+  // 3. Load Target Lists when Site selected
+  useEffect(() => {
+      if (!selectedSiteId) {
+          setTargetLists([]);
+          return;
+      }
+      getSharePointLists(selectedSiteId).then(setTargetLists).catch(console.error);
+  }, [selectedSiteId]);
+
+  // 4. Auto-detect Target List when Source Table changes
+  useEffect(() => {
+      if (!formData.source_table_id) return;
+      
+      // Try to find linked lists
+      getSharePointListsBySourceTable(formData.source_table_id).then(lists => {
+          if (lists && lists.length > 0) {
+              // Found a linked list!
+              const linkedList = lists[0];
+              // Pre-select it
+              setFormData(prev => ({ ...prev, target_list_id: linkedList.id }));
+              // Also try to set the site context if we can
+              if (linkedList.site_id) {
+                  setSelectedSiteId(linkedList.site_id);
+              }
+          }
+      }).catch(console.error);
+      
+      // Auto-name sync definition if empty
+      const table = tables.find(t => t.id === formData.source_table_id);
+      if (table && !formData.name) {
+          setFormData(prev => ({ ...prev, name: `Sync ${table.table_name}` }));
+      }
+  }, [formData.source_table_id]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -78,30 +145,77 @@ export default function NewSyncDefinition() {
             </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-6">
-             <div>
-            <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Source Table ID (UUID)</label>
-            <input
-                type="text"
-                name="source_table_id"
-                value={formData.source_table_id}
-                onChange={handleChange}
-                required
-                placeholder="00000000-0000-0000-0000-000000000000"
-                className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary placeholder-gray-400 dark:placeholder-gray-500"
-            />
+        {/* Source Selection Section */}
+        <div className="bg-white dark:bg-dark-surface p-4 rounded border border-gray-200 dark:border-gray-700">
+            <h3 className="text-sm font-semibold mb-4 text-light-text-primary dark:text-dark-text-primary">Source Configuration</h3>
+            <div className="grid grid-cols-2 gap-6">
+                <div>
+                    <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Database</label>
+                    <select
+                        value={selectedDatabaseId}
+                        onChange={(e) => setSelectedDatabaseId(e.target.value)}
+                        className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface"
+                    >
+                        <option value="">Select Database</option>
+                        {databases.map(db => (
+                            <option key={db.id} value={db.id}>{db.name}</option>
+                        ))}
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Source Table</label>
+                    <select
+                        name="source_table_id"
+                        value={formData.source_table_id}
+                        onChange={handleChange}
+                        required
+                        className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface"
+                        disabled={!selectedDatabaseId}
+                    >
+                        <option value="">Select Table</option>
+                        {tables.map(t => (
+                            <option key={t.id} value={t.id}>{t.schema_name}.{t.table_name}</option>
+                        ))}
+                    </select>
+                </div>
             </div>
+        </div>
 
-            <div>
-            <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Default Target List ID (UUID)</label>
-            <input
-                type="text"
-                name="target_list_id"
-                value={formData.target_list_id}
-                onChange={handleChange}
-                placeholder="Optional if Sharding used"
-                className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary placeholder-gray-400 dark:placeholder-gray-500"
-            />
+        {/* Target Selection Section */}
+        <div className="bg-white dark:bg-dark-surface p-4 rounded border border-gray-200 dark:border-gray-700">
+            <h3 className="text-sm font-semibold mb-4 text-light-text-primary dark:text-dark-text-primary">Target Configuration</h3>
+            <div className="grid grid-cols-2 gap-6">
+                <div>
+                    <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">SharePoint Site</label>
+                    <select
+                        value={selectedSiteId}
+                        onChange={(e) => setSelectedSiteId(e.target.value)}
+                        className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface"
+                    >
+                        <option value="">Select Site</option>
+                        {sites.map(s => (
+                            <option key={s.id} value={s.id}>{s.hostname} {s.site_path}</option>
+                        ))}
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Target List</label>
+                    <select
+                        name="target_list_id"
+                        value={formData.target_list_id}
+                        onChange={handleChange}
+                        className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface"
+                        disabled={!selectedSiteId}
+                    >
+                        <option value="">Select List (or use Sharding)</option>
+                        {targetLists.map(l => (
+                            <option key={l.id} value={l.id}>{l.display_name} {l.is_provisioned ? '(Linked)' : ''}</option>
+                        ))}
+                    </select>
+                    {formData.source_table_id && !formData.target_list_id && (
+                        <p className="text-xs text-orange-500 mt-1">No linked list found. Please select manually.</p>
+                    )}
+                </div>
             </div>
         </div>
         

@@ -1,27 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { getSyncDefinitions, generateDriftReport, triggerSync, updateSyncDefinition } from '../../services/api'; // In real app, getSyncDefinition(id)
-import { AlertTriangle, CheckCircle, RefreshCw, ArrowRightLeft, ArrowRight, Play } from 'lucide-react';
+import { getSyncDefinition, generateDriftReport, triggerSync, updateSyncDefinition } from '../../services/api';
+import { AlertTriangle, CheckCircle, RefreshCw, ArrowRightLeft, ArrowRight, Play, Settings, Database, Layers, Activity, List as ListIcon } from 'lucide-react';
 
 export default function SyncDefinitionDetail() {
   const router = useRouter();
   const { id } = router.query;
   const [def, setDef] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState('configuration');
+  const [activeSection, setActiveSection] = useState('overview');
   const [report, setReport] = useState<any>(null);
   const [loadingReport, setLoadingReport] = useState(false);
   const [runningSync, setRunningSync] = useState(false);
 
   useEffect(() => {
     if (!id) return;
-    // Mock: filtering from list because get_sync_definition endpoint exists but we can just re-use the list call for now or update service
-    // Actually the service has getSyncDefinitions (plural).
-    // Let's assume we can fetch it. 
-    // Updating service to add getSyncDefinition(id) is better but for speed I'll filter.
-    getSyncDefinitions().then(defs => {
-        const found = defs.find((d: any) => d.id === id);
-        setDef(found);
-    }).catch(console.error);
+    getSyncDefinition(id as string).then(setDef).catch(console.error);
   }, [id]);
 
   const handleRunReport = async () => {
@@ -67,58 +60,71 @@ export default function SyncDefinitionDetail() {
 
   if (!def) return <div className="p-8 text-light-text-primary dark:text-dark-text-primary">Loading definition...</div>;
 
+  const sections = [
+      { id: 'overview', label: 'Overview', icon: Settings },
+      { id: 'mappings', label: 'Field Mappings', icon: ListIcon },
+      { id: 'targets', label: 'Targets & Routing', icon: Database },
+      { id: 'sharding', label: 'Sharding Rules', icon: Layers },
+      { id: 'ops', label: 'Operations & Drift', icon: Activity },
+  ];
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center border-b border-gray-200 dark:border-gray-700 pb-4">
-        <div>
-            <h1 className="text-2xl font-bold font-secondary text-light-text-primary dark:text-dark-text-primary">{def.name}</h1>
-            <div className="flex items-center space-x-2 text-sm text-light-text-secondary dark:text-dark-text-secondary mt-1">
-                <span className="font-mono">{def.id}</span>
-            </div>
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Local Sidebar */}
+      <div className="w-64 bg-white dark:bg-dark-surface border-r border-gray-200 dark:border-gray-800 flex flex-col">
+        <div className="p-6 border-b border-gray-200 dark:border-gray-800">
+             <h1 className="text-lg font-bold font-secondary text-light-text-primary dark:text-dark-text-primary truncate" title={def.name}>{def.name}</h1>
+             <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary font-mono mt-1 truncate">{def.id}</p>
         </div>
-        <div className="flex space-x-3">
-             <button className="px-4 py-2 bg-light-surface dark:bg-dark-surface border border-gray-300 dark:border-gray-600 rounded shadow-sm text-sm font-medium text-light-text-primary dark:text-dark-text-primary hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                Edit Configuration
-             </button>
-             <button
-                onClick={handleRunSync}
-                disabled={runningSync}
-                className="flex items-center space-x-2 px-4 py-2 bg-light-primary dark:bg-dark-primary text-white rounded shadow-sm text-sm font-medium hover:bg-opacity-90 disabled:opacity-50"
-             >
-                <Play size={16} className={runningSync ? "animate-spin" : ""} />
-                <span>{runningSync ? "Running..." : "Run Sync Now"}</span>
-             </button>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="border-b border-gray-200 dark:border-gray-700">
-        <nav className="-mb-px flex space-x-8">
-            <button
-                onClick={() => setActiveTab('configuration')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'configuration' ? 'border-light-accent dark:border-dark-accent text-light-primary dark:text-dark-primary' : 'border-transparent text-light-text-secondary dark:text-dark-text-secondary hover:text-light-text-primary dark:hover:text-dark-text-primary hover:border-gray-300 dark:hover:border-gray-600'}`}
-            >
-                Configuration
-            </button>
-            <button
-                onClick={() => setActiveTab('ops')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'ops' ? 'border-light-accent dark:border-dark-accent text-light-primary dark:text-dark-primary' : 'border-transparent text-light-text-secondary dark:text-dark-text-secondary hover:text-light-text-primary dark:hover:text-dark-text-primary hover:border-gray-300 dark:hover:border-gray-600'}`}
-            >
-                Operations & Drift
-            </button>
+        <nav className="flex-1 p-4 space-y-1">
+            {sections.map(item => (
+                <button
+                    key={item.id}
+                    onClick={() => setActiveSection(item.id)}
+                    className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                        activeSection === item.id 
+                        ? 'bg-light-primary/10 text-light-primary dark:bg-dark-primary/20 dark:text-dark-primary' 
+                        : 'text-light-text-secondary dark:text-dark-text-secondary hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-light-text-primary dark:hover:text-dark-text-primary'
+                    }`}
+                >
+                    <item.icon size={18} />
+                    <span>{item.label}</span>
+                </button>
+            ))}
         </nav>
+        <div className="p-4 border-t border-gray-200 dark:border-gray-800">
+            <button
+                onClick={() => router.push('/sync-definitions')}
+                className="w-full text-xs text-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            >
+                &larr; Back to Definitions
+            </button>
+        </div>
       </div>
 
-      {/* Content */}
-      <div className="mt-6">
-        {activeTab === 'configuration' && (
-            <div className="grid grid-cols-2 gap-8">
-                <div className="space-y-4">
-                    <h3 className="text-lg font-bold text-light-text-primary dark:text-dark-text-primary">General</h3>
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-auto">
+        <header className="bg-white dark:bg-dark-surface border-b border-gray-200 dark:border-gray-800 py-4 px-8 flex justify-between items-center sticky top-0 z-10">
+            <h2 className="text-xl font-bold text-light-text-primary dark:text-dark-text-primary">
+                {sections.find(s => s.id === activeSection)?.label}
+            </h2>
+            <div className="flex space-x-3">
+                 <button
+                    onClick={handleRunSync}
+                    disabled={runningSync}
+                    className="flex items-center space-x-2 px-4 py-2 bg-light-primary dark:bg-dark-primary text-white rounded shadow-sm text-sm font-medium hover:bg-opacity-90 disabled:opacity-50"
+                 >
+                    <Play size={16} className={runningSync ? "animate-spin" : ""} />
+                    <span>{runningSync ? "Running..." : "Run Sync Now"}</span>
+                 </button>
+            </div>
+        </header>
 
-                    <div className="bg-light-surface dark:bg-dark-surface p-4 rounded border border-gray-200 dark:border-gray-700 shadow-sm">
-                        <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary mb-2">Sync Mode</label>
+        <main className="p-8">
+            {activeSection === 'overview' && (
+                <div className="space-y-6 max-w-4xl">
+                    <div className="bg-white dark:bg-dark-surface p-6 rounded border border-gray-200 dark:border-gray-700 shadow-sm">
+                        <h3 className="text-lg font-bold text-light-text-primary dark:text-dark-text-primary mb-4">Sync Mode</h3>
                         <div className="flex space-x-4">
                             <button
                                 onClick={() => handleModeToggle('ONE_WAY_PUSH')}
@@ -142,28 +148,109 @@ export default function SyncDefinitionDetail() {
                         </p>
                     </div>
 
-                    <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 mt-4">
-                        <div className="sm:col-span-1">
-                            <dt className="text-sm font-medium text-light-text-secondary dark:text-dark-text-secondary">Target Strategy</dt>
-                            <dd className="mt-1 text-sm text-light-text-primary dark:text-dark-text-primary">{def.target_strategy}</dd>
+                    <div className="grid grid-cols-2 gap-6">
+                        <div className="bg-white dark:bg-dark-surface p-6 rounded border border-gray-200 dark:border-gray-700 shadow-sm">
+                            <h3 className="text-sm font-bold text-light-text-secondary dark:text-dark-text-secondary uppercase mb-2">Strategy</h3>
+                            <dl className="space-y-2">
+                                <div>
+                                    <dt className="text-xs text-gray-500">Target Strategy</dt>
+                                    <dd className="text-sm font-medium">{def.target_strategy}</dd>
+                                </div>
+                                <div>
+                                    <dt className="text-xs text-gray-500">Conflict Policy</dt>
+                                    <dd className="text-sm font-medium">{def.conflict_policy}</dd>
+                                </div>
+                                <div>
+                                    <dt className="text-xs text-gray-500">Cursor Strategy</dt>
+                                    <dd className="text-sm font-medium">{def.cursor_strategy}</dd>
+                                </div>
+                            </dl>
                         </div>
-                        <div className="sm:col-span-1">
-                            <dt className="text-sm font-medium text-light-text-secondary dark:text-dark-text-secondary">Conflict Policy</dt>
-                            <dd className="mt-1 text-sm text-light-text-primary dark:text-dark-text-primary">{def.conflict_policy}</dd>
+                         <div className="bg-white dark:bg-dark-surface p-6 rounded border border-gray-200 dark:border-gray-700 shadow-sm">
+                            <h3 className="text-sm font-bold text-light-text-secondary dark:text-dark-text-secondary uppercase mb-2">IDs</h3>
+                            <dl className="space-y-2">
+                                <div>
+                                    <dt className="text-xs text-gray-500">Source Table ID</dt>
+                                    <dd className="text-xs font-mono">{def.source_table_id}</dd>
+                                </div>
+                                <div>
+                                    <dt className="text-xs text-gray-500">Target List ID</dt>
+                                    <dd className="text-xs font-mono">{def.target_list_id || 'Dynamic (Sharded)'}</dd>
+                                </div>
+                            </dl>
                         </div>
-                    </dl>
+                    </div>
                 </div>
-                 <div className="space-y-4">
-                    <h3 className="text-lg font-bold text-light-text-primary dark:text-dark-text-primary">Sharding Policy</h3>
-                    <pre className="bg-gray-50 dark:bg-gray-800 p-4 rounded text-xs overflow-auto h-48 border border-gray-200 dark:border-gray-700 text-light-text-primary dark:text-dark-text-primary">
-                        {JSON.stringify(def.sharding_policy, null, 2)}
-                    </pre>
-                </div>
-            </div>
-        )}
+            )}
 
-        {activeTab === 'ops' && (
-            <div className="space-y-8">
+            {activeSection === 'mappings' && (
+                <div className="bg-white dark:bg-dark-surface rounded border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+                    {def.field_mappings && def.field_mappings.length > 0 ? (
+                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                            <thead className="bg-gray-50 dark:bg-gray-800">
+                                <tr>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source Column</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target Column</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Key</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Read Only</th>
+                                </tr>
+                            </thead>
+                            <tbody className="bg-white dark:bg-dark-surface divide-y divide-gray-200 dark:divide-gray-700">
+                                {def.field_mappings.map((m: any) => (
+                                    <tr key={m.id}>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-light-text-primary dark:text-dark-text-primary">
+                                            {m.source_column_name}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-light-text-primary dark:text-dark-text-primary">
+                                            {m.target_column_name}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {m.target_type}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {m.is_key ? <CheckCircle size={16} className="text-green-500"/> : '-'}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {m.is_readonly ? <CheckCircle size={16} className="text-gray-400"/> : '-'}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    ) : (
+                        <div className="p-8 text-center text-gray-500">
+                            No field mappings configured.
+                            <br/>
+                            <span className="text-xs">Mappings are auto-generated on creation if source and target schemas match.</span>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {activeSection === 'targets' && (
+                <div className="bg-white dark:bg-dark-surface p-6 rounded border border-gray-200 dark:border-gray-700 shadow-sm">
+                    <p className="text-sm text-gray-500">Target configuration (Primary List, Fallback, etc.) will be managed here.</p>
+                    <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded">
+                        <span className="text-xs font-mono">Default Target List: {def.target_list_id || 'None'}</span>
+                    </div>
+                </div>
+            )}
+
+            {activeSection === 'sharding' && (
+                 <div className="space-y-4">
+                    <div className="bg-white dark:bg-dark-surface p-6 rounded border border-gray-200 dark:border-gray-700 shadow-sm">
+                         <h3 className="text-lg font-bold text-light-text-primary dark:text-dark-text-primary mb-2">Sharding Rules</h3>
+                        <p className="text-sm text-gray-500 mb-4">Routing logic for conditional targets.</p>
+                        <pre className="bg-gray-50 dark:bg-gray-800 p-4 rounded text-xs overflow-auto h-64 border border-gray-200 dark:border-gray-700 font-mono text-light-text-primary dark:text-dark-text-primary">
+                            {JSON.stringify(def.sharding_policy, null, 2)}
+                        </pre>
+                    </div>
+                </div>
+            )}
+
+            {activeSection === 'ops' && (
+                <div className="space-y-8">
                 <div className="bg-light-surface dark:bg-dark-surface p-6 rounded shadow-sm border border-gray-200 dark:border-gray-700">
                     <div className="flex justify-between items-start mb-4">
                         <div>
@@ -237,7 +324,8 @@ export default function SyncDefinitionDetail() {
                     )}
                 </div>
             </div>
-        )}
+            )}
+        </main>
       </div>
     </div>
   );
