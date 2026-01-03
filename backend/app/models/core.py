@@ -29,7 +29,11 @@ class DatabaseInstance(Base):
     last_wal_lsn: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     
     # Sync sources that use this instance
-    sync_sources: Mapped[List["SyncSource"]] = relationship(back_populates="database_instance")
+    sync_sources: Mapped[List["SyncSource"]] = relationship(
+        back_populates="database_instance",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class SharePointConnection(Base):
@@ -70,17 +74,33 @@ class SyncDefinition(Base):
     is_paused: Mapped[bool] = mapped_column(Boolean, default=False)
     rate_limit_ms: Mapped[int] = mapped_column(Integer, default=0)
     
-    sources: Mapped[List["SyncSource"]] = relationship(back_populates="sync_definition")
-    targets: Mapped[List["SyncTarget"]] = relationship(back_populates="sync_definition")
-    key_columns: Mapped[List["SyncKeyColumn"]] = relationship(back_populates="sync_definition")
-    field_mappings: Mapped[List["FieldMapping"]] = relationship(back_populates="sync_definition")
+    sources: Mapped[List["SyncSource"]] = relationship(
+        back_populates="sync_definition",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    targets: Mapped[List["SyncTarget"]] = relationship(
+        back_populates="sync_definition",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    key_columns: Mapped[List["SyncKeyColumn"]] = relationship(
+        back_populates="sync_definition",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    field_mappings: Mapped[List["FieldMapping"]] = relationship(
+        back_populates="sync_definition",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class SyncSource(Base):
     __tablename__ = "sync_sources"
 
-    sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id"), primary_key=True)
-    database_instance_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("database_instances.id"), primary_key=True)
+    sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id", ondelete="CASCADE"), primary_key=True)
+    database_instance_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("database_instances.id", ondelete="CASCADE"), primary_key=True)
     role: Mapped[str] = mapped_column(String, default="PRIMARY")
     priority: Mapped[int] = mapped_column(Integer, default=1)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -92,10 +112,13 @@ class SyncSource(Base):
 class SyncTarget(Base):
     __tablename__ = "sync_targets"
 
-    sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id"), primary_key=True)
+    sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id", ondelete="CASCADE"), primary_key=True)
     target_list_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True) # Maps to a SP List (external ID or internal ref)
     
-    sharepoint_connection_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("sharepoint_connections.id"), nullable=True)
+    sharepoint_connection_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("sharepoint_connections.id", ondelete="CASCADE"),
+        nullable=True,
+    )
     site_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -109,7 +132,7 @@ class SyncTarget(Base):
 class SyncKeyColumn(Base):
     __tablename__ = "sync_key_columns"
 
-    sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id"), primary_key=True)
+    sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id", ondelete="CASCADE"), primary_key=True)
     column_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     ordinal_position: Mapped[int] = mapped_column(Integer)
     is_required: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -121,7 +144,7 @@ class FieldMapping(Base):
     __tablename__ = "field_mappings"
     
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id"))
+    sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id", ondelete="CASCADE"))
     source_column_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     target_column_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     
@@ -141,7 +164,7 @@ class SyncCursor(Base):
     __tablename__ = "sync_cursors"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id"))
+    sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id", ondelete="CASCADE"))
     cursor_scope: Mapped[str] = mapped_column(String) # SOURCE, TARGET
     cursor_type: Mapped[str] = mapped_column(String) # TIMESTAMP, LSN, DELTA_TOKEN
     cursor_value: Mapped[str] = mapped_column(String)

@@ -1,4 +1,11 @@
 from logging.config import fileConfig
+import os
+import sys
+
+# Ensure backend root is on sys.path for Alembic in containers or subdirs
+BACKEND_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if BACKEND_ROOT not in sys.path:
+    sys.path.append(BACKEND_ROOT)
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool

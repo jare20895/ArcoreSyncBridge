@@ -21,6 +21,11 @@ export const updateDatabaseInstance = async (id: string, data: any) => {
   return res.data;
 };
 
+export const deleteDatabaseInstance = async (id: string) => {
+  const res = await api.delete(`/database-instances/${id}`);
+  return res.data;
+};
+
 export const getConnections = async () => {
   const res = await api.get('/sharepoint-connections/');
   return res.data;

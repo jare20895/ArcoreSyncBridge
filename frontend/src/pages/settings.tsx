@@ -109,42 +109,42 @@ export default function SettingsPage() {
                 {/* Connection List */}
                 <div className="space-y-4">
                     <div className="flex justify-between items-center">
-                        <h3 className="font-medium">Active Connections</h3>
-                        <a href="/sharepoint-connections/new" className="text-sm text-light-primary hover:underline font-medium">Add New</a>
+                        <h3 className="font-medium text-light-text-primary dark:text-dark-text-primary">Active Connections</h3>
+                        <a href="/sharepoint-connections/new" className="text-sm text-light-primary dark:text-dark-primary hover:underline font-medium">Add New</a>
                     </div>
-                    
-                    <div className="border rounded-lg divide-y bg-white dark:bg-gray-800">
+
+                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
                         {spConnections.map(conn => (
                             <div key={conn.id} className="p-4 flex justify-between items-center">
                                 <div>
-                                    <div className="font-medium">Tenant: {conn.tenant_id}</div>
-                                    <div className="text-xs text-gray-500">Client ID: {conn.client_id}</div>
+                                    <div className="font-medium text-light-text-primary dark:text-dark-text-primary">Tenant: {conn.tenant_id}</div>
+                                    <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary">Client ID: {conn.client_id}</div>
                                 </div>
-                                <span className={`px-2 py-1 text-xs rounded-full ${conn.status === 'ACTIVE' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                                <span className={`px-2 py-1 text-xs rounded-full ${conn.status === 'ACTIVE' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'}`}>
                                     {conn.status}
                                 </span>
                             </div>
                         ))}
-                        {spConnections.length === 0 && <div className="p-4 text-sm text-gray-500 italic">No connections found.</div>}
+                        {spConnections.length === 0 && <div className="p-4 text-sm text-light-text-secondary dark:text-dark-text-secondary italic">No connections found.</div>}
                     </div>
                     
-                    <div className="mt-4 pt-4 border-t">
-                        <h3 className="font-medium mb-3">Global API Settings</h3>
+                    <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <h3 className="font-medium mb-3 text-light-text-primary dark:text-dark-text-primary">Global API Settings</h3>
                         <div className="grid grid-cols-1 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Graph API Version</label>
-                                <select className="w-full border-gray-300 rounded-md shadow-sm text-sm p-2 border">
+                                <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary mb-1">Graph API Version</label>
+                                <select className="w-full border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm p-2 border bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary">
                                     <option>v1.0 (Recommended)</option>
                                     <option>beta</option>
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Throttling Threshold (ms)</label>
-                                <input type="number" className="w-full border-gray-300 rounded-md shadow-sm text-sm p-2 border" defaultValue={500} />
+                                <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary mb-1">Throttling Threshold (ms)</label>
+                                <input type="number" className="w-full border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm p-2 border bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary" defaultValue={500} />
                             </div>
                         </div>
                         <div className="mt-4 flex justify-end">
-                            <button className="flex items-center space-x-2 px-4 py-2 bg-light-primary text-white rounded-md text-sm font-medium hover:bg-opacity-90">
+                            <button className="flex items-center space-x-2 px-4 py-2 bg-light-primary dark:bg-dark-primary text-white rounded-md text-sm font-medium hover:bg-opacity-90">
                                 <Save size={16} />
                                 <span>Save Changes</span>
                             </button>
@@ -163,32 +163,32 @@ export default function SettingsPage() {
 
                 {/* Database Secrets */}
                 <div className="space-y-4">
-                    <h3 className="text-sm font-bold uppercase text-gray-500 tracking-wider flex items-center">
+                    <h3 className="text-sm font-bold uppercase text-light-text-secondary dark:text-dark-text-secondary tracking-wider flex items-center">
                         <Database size={16} className="mr-2"/> Database Instances
                     </h3>
-                    <div className="border rounded-lg divide-y bg-white dark:bg-gray-800">
+                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
                         {dbInstances.map(db => (
                             <div key={db.id} className="p-4 flex justify-between items-center">
                                 <div>
-                                    <div className="font-medium">{db.instance_label}</div>
-                                    <div className="text-xs text-gray-500">{db.host}:{db.port}</div>
+                                    <div className="font-medium text-light-text-primary dark:text-dark-text-primary">{db.instance_label}</div>
+                                    <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary">{db.host}:{db.port}</div>
                                 </div>
                                 {editingId === db.id ? (
                                     <div className="flex items-center space-x-2">
-                                        <input 
-                                            type="password" 
-                                            className="border rounded px-2 py-1 text-sm"
+                                        <input
+                                            type="password"
+                                            className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
                                             placeholder="New Password"
                                             value={newSecret}
                                             onChange={(e) => setNewSecret(e.target.value)}
                                         />
-                                        <button onClick={() => handleSaveSecret('DB', db.id)} className="text-green-600 hover:text-green-700 text-sm font-medium">Save</button>
-                                        <button onClick={() => {setEditingId(null); setNewSecret('');}} className="text-gray-500 hover:text-gray-600 text-sm">Cancel</button>
+                                        <button onClick={() => handleSaveSecret('DB', db.id)} className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 text-sm font-medium">Save</button>
+                                        <button onClick={() => {setEditingId(null); setNewSecret('');}} className="text-gray-500 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-sm">Cancel</button>
                                     </div>
                                 ) : (
-                                    <button 
+                                    <button
                                         onClick={() => {setEditingId(db.id); setNewSecret('');}}
-                                        className="flex items-center space-x-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-xs font-medium text-gray-700 transition-colors"
+                                        className="flex items-center space-x-1 px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-xs font-medium text-gray-700 dark:text-gray-200 transition-colors"
                                     >
                                         <Edit2 size={12} />
                                         <span>Update Password</span>
@@ -196,38 +196,38 @@ export default function SettingsPage() {
                                 )}
                             </div>
                         ))}
-                        {dbInstances.length === 0 && <div className="p-4 text-sm text-gray-500 italic">No database instances found.</div>}
+                        {dbInstances.length === 0 && <div className="p-4 text-sm text-light-text-secondary dark:text-dark-text-secondary italic">No database instances found.</div>}
                     </div>
                 </div>
 
                 {/* SharePoint Secrets */}
                 <div className="space-y-4">
-                    <h3 className="text-sm font-bold uppercase text-gray-500 tracking-wider flex items-center">
+                    <h3 className="text-sm font-bold uppercase text-light-text-secondary dark:text-dark-text-secondary tracking-wider flex items-center">
                         <Cloud size={16} className="mr-2"/> SharePoint Connections
                     </h3>
-                    <div className="border rounded-lg divide-y bg-white dark:bg-gray-800">
+                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
                         {spConnections.map(conn => (
                             <div key={conn.id} className="p-4 flex justify-between items-center">
                                 <div>
-                                    <div className="font-medium">Tenant: {conn.tenant_id}</div>
-                                    <div className="text-xs text-gray-500">Client ID: {conn.client_id}</div>
+                                    <div className="font-medium text-light-text-primary dark:text-dark-text-primary">Tenant: {conn.tenant_id}</div>
+                                    <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary">Client ID: {conn.client_id}</div>
                                 </div>
                                 {editingId === conn.id ? (
                                     <div className="flex items-center space-x-2">
-                                        <input 
-                                            type="password" 
-                                            className="border rounded px-2 py-1 text-sm"
+                                        <input
+                                            type="password"
+                                            className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
                                             placeholder="New Client Secret"
                                             value={newSecret}
                                             onChange={(e) => setNewSecret(e.target.value)}
                                         />
-                                        <button onClick={() => handleSaveSecret('SP', conn.id)} className="text-green-600 hover:text-green-700 text-sm font-medium">Save</button>
-                                        <button onClick={() => {setEditingId(null); setNewSecret('');}} className="text-gray-500 hover:text-gray-600 text-sm">Cancel</button>
+                                        <button onClick={() => handleSaveSecret('SP', conn.id)} className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 text-sm font-medium">Save</button>
+                                        <button onClick={() => {setEditingId(null); setNewSecret('');}} className="text-gray-500 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-sm">Cancel</button>
                                     </div>
                                 ) : (
-                                    <button 
+                                    <button
                                         onClick={() => {setEditingId(conn.id); setNewSecret('');}}
-                                        className="flex items-center space-x-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-xs font-medium text-gray-700 transition-colors"
+                                        className="flex items-center space-x-1 px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-xs font-medium text-gray-700 dark:text-gray-200 transition-colors"
                                     >
                                         <Edit2 size={12} />
                                         <span>Update Secret</span>
@@ -235,16 +235,16 @@ export default function SettingsPage() {
                                 )}
                             </div>
                         ))}
-                        {spConnections.length === 0 && <div className="p-4 text-sm text-gray-500 italic">No connections found.</div>}
+                        {spConnections.length === 0 && <div className="p-4 text-sm text-light-text-secondary dark:text-dark-text-secondary italic">No connections found.</div>}
                     </div>
                 </div>
               </div>
             )}
 
             {activeTab === 'profile' && (
-              <div className="text-center py-12 text-gray-500">
-                <User size={48} className="mx-auto mb-4 text-gray-300" />
-                <h3 className="text-lg font-medium">User Profile</h3>
+              <div className="text-center py-12 text-light-text-secondary dark:text-dark-text-secondary">
+                <User size={48} className="mx-auto mb-4 text-gray-300 dark:text-gray-600" />
+                <h3 className="text-lg font-medium text-light-text-primary dark:text-dark-text-primary">User Profile</h3>
                 <p>Manage your account settings and preferences.</p>
               </div>
             )}
