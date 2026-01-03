@@ -14,6 +14,15 @@ jobs:
   create_pr:
     runs-on: ubuntu-latest
     steps:
+      - name: Debug token identity
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.AUTO_PR_TOKEN }}
+        run: |
+          set -euo pipefail
+          login=$(gh api user -q '.login')
+          echo "Token login: $login"
+
       - name: Create PR if missing
         env:
           GH_TOKEN: ${{ secrets.AUTO_PR_TOKEN }}
