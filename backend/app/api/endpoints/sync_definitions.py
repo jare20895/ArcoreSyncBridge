@@ -69,6 +69,12 @@ def create_sync_definition(
             sc_norm = sc.column_name.lower()
             if sc_norm in target_map:
                 tc = target_map[sc_norm]
+                
+                # Skip Read-Only Target Columns (e.g. ID, Created, Modified)
+                # We cannot write to them, so mapping them for sync is invalid (unless for matching/keys, but usually keys use custom fields)
+                if tc.is_readonly:
+                    continue
+
                 # Map it
                 db.add(FieldMapping(
                     sync_def_id=db_def.id,
@@ -139,6 +145,7 @@ def get_sync_definition(
         sp_list = db.get(SharePointList, db_def.target_list_id)
         if sp_list:
             model.target_list_name = sp_list.display_name
+            model.target_list_guid = sp_list.list_id
         else:
             model.target_list_name = "Unknown List"
 

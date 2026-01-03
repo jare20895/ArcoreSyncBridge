@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.models.core import SyncDefinition, SyncCursor, SharePointConnection, SyncTarget, SyncSource, SyncLedgerEntry
+from app.models.inventory import SharePointList, SharePointSite
 from app.services.sharepoint_content import SharePointContentService
 from app.services.graph import GraphClient
 from app.services.database import DatabaseClient
@@ -21,25 +22,18 @@ class Pusher:
         self._conn_cache = {}
         self._content_service_cache = {}
 
-    def _get_content_service(self, target: SyncTarget) -> tuple[SharePointContentService, str]:
-        # Cache key could be connection_id + site_id
-        conn_id = target.sharepoint_connection_id
-        # Use target site_id or fallback. We need this for the key too if connection is reused across sites.
-        real_secret = os.environ.get("AZURE_CLIENT_SECRET", "")
-        site_id = target.site_id or os.environ.get("SHAREPOINT_SITE_ID", "")
-        
-        if not conn_id:
-             cache_key = ("DEFAULT", site_id)
-        else:
-             cache_key = (conn_id, site_id)
-             
+    def _get_content_service(self, connection_id: Optional[UUID], site_id: str) -> tuple[SharePointContentService, str]:
+        # Cache key
+        cache_key = (connection_id, site_id)
         if cache_key in self._content_service_cache:
             return self._content_service_cache[cache_key]
 
-        # Resolve Connection
-        if conn_id:
-            conn = self.db.get(SharePointConnection, conn_id)
+        real_secret = os.environ.get("AZURE_CLIENT_SECRET", "")
+        
+        if connection_id:
+            conn = self.db.get(SharePointConnection, connection_id)
         else:
+            # Fallback to finding ANY active connection if none specified (dangerous but maybe needed for legacy)
             conn = self.db.query(SharePointConnection).filter(SharePointConnection.status == "ACTIVE").first()
 
         if not conn:
@@ -72,10 +66,29 @@ class Pusher:
             SyncTarget.status == "ACTIVE"
         )).scalars().all()
         
+        target_map = {str(t.target_list_id): t for t in targets}
+        
+        # Fallback: If no explicit SyncTargets but we have a default target_list_id
+        if not targets and sync_def.target_list_id:
+            # Auto-resolve connection context from Inventory
+            sp_list = self.db.get(SharePointList, sync_def.target_list_id)
+            if sp_list:
+                sp_site = self.db.get(SharePointSite, sp_list.site_id)
+                if sp_site:
+                    # Create a virtual/transient SyncTarget for this run
+                    virtual_target = SyncTarget(
+                        sync_def_id=sync_def_id,
+                        target_list_id=sync_def.target_list_id,
+                        sharepoint_connection_id=sp_site.connection_id,
+                        site_id=sp_site.site_id,
+                        is_default=True
+                    )
+                    targets = [virtual_target]
+                    target_map[str(sync_def.target_list_id)] = virtual_target
+
         if not targets:
              raise ValueError("No active target lists found for this definition")
         
-        target_map = {str(t.target_list_id): t for t in targets}
         default_target = next((t for t in targets if t.is_default), targets[0])
 
         # Setup Sharding if needed
@@ -90,17 +103,36 @@ class Pusher:
             SyncSource.is_enabled == True
         )).scalars().first()
         
-        if not source_mapping or not source_mapping.database_instance:
+        db_instance = None
+        
+        if source_mapping:
+            db_instance = source_mapping.database_instance
+        elif sync_def.source_table_id:
+            # Fallback: Infer instance from Source Table ID
+            from app.models.inventory import DatabaseTable
+            from app.models.core import DatabaseInstance
+            
+            table = self.db.get(DatabaseTable, sync_def.source_table_id)
+            if table:
+                # Find an active instance for this table's database
+                instance_stmt = select(DatabaseInstance).where(
+                    DatabaseInstance.database_id == table.database_id,
+                    DatabaseInstance.status == "ACTIVE"
+                ).order_by(DatabaseInstance.priority) # Prioritize lower number (1 = primary)
+                
+                db_instance = self.db.execute(instance_stmt).scalars().first()
+        
+        if not db_instance:
              raise ValueError("No active source database instance found")
         
-        db_client = DatabaseClient(source_mapping.database_instance)
+        db_client = DatabaseClient(db_instance)
 
         # 5. Get Source Cursor (Watermark)
         cursor_stmt = select(SyncCursor).where(
             SyncCursor.sync_def_id == sync_def_id,
             SyncCursor.cursor_scope == "SOURCE",
             SyncCursor.cursor_type == "TIMESTAMP", # Assuming timestamp strategy
-            SyncCursor.source_instance_id == source_mapping.database_instance_id
+            SyncCursor.source_instance_id == db_instance.id
         )
         cursor = self.db.execute(cursor_stmt).scalars().first()
         last_watermark = cursor.cursor_value if cursor else None
@@ -110,6 +142,17 @@ class Pusher:
         schema_name = sync_def.source_schema or "public"
         table_name = sync_def.source_table_name or sync_def.name
         
+        # If table name matches the definition name (e.g. "Sync TableA"), we might need to resolve the real table name
+        # The DatabaseClient expects the real table name. 
+        # Ideally sync_def.source_table_name is populated. 
+        # If not, and we have a source_table_id, fetch it.
+        if not sync_def.source_table_name and sync_def.source_table_id:
+             from app.models.inventory import DatabaseTable
+             tbl = self.db.get(DatabaseTable, sync_def.source_table_id)
+             if tbl:
+                 table_name = tbl.table_name
+                 schema_name = tbl.schema_name
+
         rows = db_client.fetch_changed_rows(schema_name, table_name, cursor_col, last_watermark)
         
         processed_count = 0
@@ -125,6 +168,11 @@ class Pusher:
                 pg_to_sp_map[fm.source_column_name] = fm.target_column_name
             if fm.is_key and fm.source_column_name:
                 pg_pk_col = fm.source_column_name
+        
+        print(f"[DEBUG] Field Mappings: {len(pg_to_sp_map)} fields mapped. PK: {pg_pk_col}")
+
+        failed_count = 0
+        success_count = 0
 
         for row in rows:
             # 7. Process Row
@@ -139,6 +187,12 @@ class Pusher:
                 sp_fields[sp_col] = val
                 filtered_row_data[pg_col] = val
             
+            # If no fields mapped, we can't sync content (unless we just want to create empty placeholders, which is rare)
+            if not sp_fields:
+                print(f"[WARN] No fields mapped for row {source_id}. Skipping sync.")
+                failed_count += 1
+                continue
+
             content_hash = self._compute_content_hash(filtered_row_data)
 
             # Extract Timestamp
@@ -158,12 +212,23 @@ class Pusher:
             target_obj = target_map.get(target_list_id)
             if not target_obj:
                 print(f"Target list {target_list_id} determined but not found in active targets. Skipping.")
+                failed_count += 1
+                continue
+
+            # Validate List Status in Inventory
+            # We need to check if the underlying SharePointList is marked DELETED
+            # This prevents writing to recycled/stale lists if the user hasn't updated the definition
+            sp_list_record = self.db.get(SharePointList, target_obj.target_list_id)
+            if sp_list_record and sp_list_record.status == 'DELETED':
+                print(f"[ERROR] Target list '{sp_list_record.display_name}' ({target_list_id}) is marked DELETED in inventory. Please update the Sync Definition to point to the new list.")
+                failed_count += 1
                 continue
 
             try:
-                content_service, site_id = self._get_content_service(target_obj)
+                content_service, site_id = self._get_content_service(target_obj.sharepoint_connection_id, target_obj.site_id)
             except Exception as e:
                 print(f"Failed to get content service for target {target_list_id}: {e}")
+                failed_count += 1
                 continue
 
             # LOOP PREVENTION / LEDGER CHECK
@@ -175,7 +240,6 @@ class Pusher:
                     # Check if hash matches. If hash is same, it's definitely a loop echo.
                     if ledger_entry.content_hash == content_hash:
                         # Skip
-                        processed_count += 1
                         # Update max cursor
                         if str(row_ts) > str(max_cursor_seen if max_cursor_seen else ""):
                             max_cursor_seen = str(row_ts)
@@ -193,32 +257,40 @@ class Pusher:
                     ledger_entry.last_sync_ts = datetime.utcnow()
                     ledger_entry.provenance = "PUSH"
                     ledger_entry.last_source_ts = row_ts if isinstance(row_ts, datetime) else datetime.utcnow() # approx
+                    success_count += 1
                 except Exception as e:
                     # Log error
                     print(f"Failed to update SP item: {e}")
+                    failed_count += 1
             else:
                 # Create SP Item
                 try:
                     sp_id_str = content_service.create_item(site_id, target_list_id, sp_fields)
-                    sp_item_id = int(sp_id_str)
-                    
-                    # Create Ledger
-                    new_entry = SyncLedgerEntry(
-                        sync_def_id=sync_def_id,
-                        source_identity_hash=id_hash,
-                        source_identity=source_id,
-                        source_key_strategy="PRIMARY_KEY",
-                        source_instance_id=source_mapping.database_instance_id,
-                        sp_list_id=target_list_id,
-                        sp_item_id=sp_item_id,
-                        content_hash=content_hash,
-                        last_source_ts=row_ts if isinstance(row_ts, datetime) else datetime.utcnow(),
-                        last_sync_ts=datetime.utcnow(),
-                        provenance="PUSH"
-                    )
-                    self.db.add(new_entry)
+                    if sp_id_str:
+                        sp_item_id = int(sp_id_str)
+                        
+                        # Create Ledger
+                        new_entry = SyncLedgerEntry(
+                            sync_def_id=sync_def_id,
+                            source_identity_hash=id_hash,
+                            source_identity=source_id,
+                            source_key_strategy="PRIMARY_KEY",
+                            source_instance_id=db_instance.id,
+                            sp_list_id=target_list_id,
+                            sp_item_id=sp_item_id,
+                            content_hash=content_hash,
+                            last_source_ts=row_ts if isinstance(row_ts, datetime) else datetime.utcnow(),
+                            last_sync_ts=datetime.utcnow(),
+                            provenance="PUSH"
+                        )
+                        self.db.add(new_entry)
+                        success_count += 1
+                    else:
+                        print(f"Graph API returned no ID for created item. Payload: {sp_fields}")
+                        failed_count += 1
                 except Exception as e:
                      print(f"Failed to create SP item: {e}")
+                     failed_count += 1
 
             processed_count += 1
             if str(row_ts) > str(max_cursor_seen if max_cursor_seen else ""):
@@ -230,7 +302,7 @@ class Pusher:
             cursor_stmt = select(SyncCursor).where(
                 SyncCursor.sync_def_id == sync_def_id,
                 SyncCursor.cursor_scope == "SOURCE",
-                SyncCursor.source_instance_id == source_mapping.database_instance_id
+                SyncCursor.source_instance_id == db_instance.id
             )
             cursor = self.db.execute(cursor_stmt).scalars().first()
             
@@ -244,7 +316,7 @@ class Pusher:
                     cursor_scope="SOURCE",
                     cursor_type="TIMESTAMP",
                     cursor_value=max_cursor_seen,
-                    source_instance_id=source_mapping.database_instance_id,
+                    source_instance_id=db_instance.id,
                     updated_at=datetime.utcnow()
                 )
                 self.db.add(new_cursor)
@@ -253,6 +325,8 @@ class Pusher:
 
         return {
             "processed_count": processed_count,
+            "success_count": success_count,
+            "failed_count": failed_count,
             "cursor_updated": bool(max_cursor_seen)
         }
 

@@ -1,7 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { getSyncDefinition, generateDriftReport, triggerSync, updateSyncDefinition } from '../../services/api';
-import { AlertTriangle, CheckCircle, RefreshCw, ArrowRightLeft, ArrowRight, Play, Settings, Database, Layers, Activity, List as ListIcon } from 'lucide-react';
+import { 
+    getSyncDefinition, 
+    generateDriftReport, 
+    triggerSync, 
+    updateSyncDefinition,
+    getSharePointSites,
+    getSharePointLists
+} from '../../services/api';
+import { AlertTriangle, CheckCircle, RefreshCw, ArrowRightLeft, ArrowRight, Play, Settings, Database, Layers, Activity, List as ListIcon, Edit2, X, Save } from 'lucide-react';
 
 export default function SyncDefinitionDetail() {
   const router = useRouter();
@@ -12,10 +19,31 @@ export default function SyncDefinitionDetail() {
   const [loadingReport, setLoadingReport] = useState(false);
   const [runningSync, setRunningSync] = useState(false);
 
+  // Editing State
+  const [isEditingTargets, setIsEditingTargets] = useState(false);
+  const [sites, setSites] = useState<any[]>([]);
+  const [targetLists, setTargetLists] = useState<any[]>([]);
+  const [editSiteId, setEditSiteId] = useState('');
+  const [editListId, setEditListId] = useState('');
+
   useEffect(() => {
     if (!id) return;
     getSyncDefinition(id as string).then(setDef).catch(console.error);
   }, [id]);
+
+  // Load Sites when entering Edit Mode
+  useEffect(() => {
+      if (isEditingTargets && sites.length === 0) {
+          getSharePointSites().then(setSites).catch(console.error);
+      }
+  }, [isEditingTargets]);
+
+  // Load Lists when Site Selected
+  useEffect(() => {
+      if (editSiteId) {
+          getSharePointLists(editSiteId).then(setTargetLists).catch(console.error);
+      }
+  }, [editSiteId]);
 
   const handleRunReport = async () => {
     setLoadingReport(true);
@@ -55,6 +83,26 @@ export default function SyncDefinitionDetail() {
       } catch (e) {
           console.error(e);
           alert("Failed to update sync mode");
+      }
+  };
+
+  const handleSaveTarget = async () => {
+      if (!id || !editListId) return;
+      try {
+          const updated = await updateSyncDefinition(id as string, { target_list_id: editListId });
+          
+          // Optimistic / Local Update of Display Name
+          const selectedList = targetLists.find(l => l.id === editListId);
+          if (selectedList) {
+              updated.target_list_name = selectedList.display_name;
+          }
+          
+          setDef(updated);
+          setIsEditingTargets(false);
+          setEditListId('');
+      } catch (e) {
+          console.error(e);
+          alert("Failed to update target list");
       }
   };
 
@@ -230,10 +278,80 @@ export default function SyncDefinitionDetail() {
 
             {activeSection === 'targets' && (
                 <div className="bg-white dark:bg-dark-surface p-6 rounded border border-gray-200 dark:border-gray-700 shadow-sm">
-                    <p className="text-sm text-gray-500">Target configuration (Primary List, Fallback, etc.) will be managed here.</p>
-                    <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded">
-                        <span className="text-xs font-mono">Default Target List: {def.target_list_id || 'None'}</span>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-bold text-light-text-primary dark:text-dark-text-primary">Default Target</h3>
+                        {!isEditingTargets && (
+                            <button 
+                                onClick={() => setIsEditingTargets(true)}
+                                className="flex items-center space-x-2 text-sm text-light-primary dark:text-dark-primary hover:underline"
+                            >
+                                <Edit2 size={14} />
+                                <span>Change Target</span>
+                            </button>
+                        )}
                     </div>
+
+                    {!isEditingTargets ? (
+                        <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
+                            <div className="text-sm font-medium text-light-text-primary dark:text-dark-text-primary">
+                                {def.target_list_name || 'No Default List Selected'}
+                            </div>
+                            <div className="text-xs text-gray-500 font-mono mt-1">
+                                Internal ID: {def.target_list_id || 'N/A'}
+                            </div>
+                            {def.target_list_guid && (
+                                <div className="text-xs text-gray-500 font-mono mt-1">
+                                    SharePoint GUID: {def.target_list_guid}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="space-y-4 p-4 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
+                            <div>
+                                <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary mb-1">SharePoint Site</label>
+                                <select 
+                                    value={editSiteId}
+                                    onChange={(e) => setEditSiteId(e.target.value)}
+                                    className="w-full border border-gray-300 dark:border-gray-600 rounded p-2 bg-white dark:bg-dark-surface text-sm"
+                                >
+                                    <option value="">Select Site...</option>
+                                    {sites.map(s => (
+                                        <option key={s.id} value={s.id}>{s.hostname} {s.site_path}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary mb-1">Target List</label>
+                                <select 
+                                    value={editListId}
+                                    onChange={(e) => setEditListId(e.target.value)}
+                                    className="w-full border border-gray-300 dark:border-gray-600 rounded p-2 bg-white dark:bg-dark-surface text-sm"
+                                    disabled={!editSiteId}
+                                >
+                                    <option value="">Select List...</option>
+                                    {targetLists.map(l => (
+                                        <option key={l.id} value={l.id}>{l.display_name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex justify-end space-x-2 pt-2">
+                                <button 
+                                    onClick={() => setIsEditingTargets(false)}
+                                    className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-200 rounded"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    onClick={handleSaveTarget}
+                                    disabled={!editListId}
+                                    className="flex items-center space-x-1 px-3 py-1.5 bg-light-primary text-white text-sm rounded hover:opacity-90 disabled:opacity-50"
+                                >
+                                    <Save size={14} />
+                                    <span>Save</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 

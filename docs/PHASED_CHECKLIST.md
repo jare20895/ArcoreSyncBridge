@@ -83,3 +83,10 @@ This checklist tracks delivery by phase. Items can be moved forward as scope evo
 - [ ] Configuration audit logging and governance controls
 - [ ] CDC end-to-end integration tests and perf regression gates
 - [x] Add ops endpoints to create/inspect/drop replication slots and validate required Postgres permissions
+
+## Phase 6: Advanced Mapping & Two-Way Fidelity
+- [ ] **Interactive Mapping Editor UI**: Full CRUD for mappings (add, remove, type select) in Sync Definition Detail.
+- [ ] **System Field Ingress**: Support mapping Read-Only SharePoint fields (ID, Created, Modified) to writable DB columns (e.g. `_sp_id`, `_sp_modified`) for ingress.
+- [ ] **Directional Mapping**: Configurable per-field sync direction (Push Only, Pull Only, Bi-directional).
+- [ ] **Rich Type Support**: Enhanced handling for Lookup (ID vs Value), Person (Email vs Name), and Choice (Text[]).
+- [ ] **Data Transformation**: Basic transform rules (Upper, Lower, Trim, Regex) in mapping layer.

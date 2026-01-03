@@ -102,6 +102,7 @@ class SyncDefinitionUpdate(BaseModel):
 class SyncDefinitionRead(SyncDefinitionBase):
     id: UUID
     target_list_name: Optional[str] = None
+    target_list_guid: Optional[str] = None # Actual SharePoint GUID
     source_table_name_resolved: Optional[str] = None
     sources: List[SyncSourceRead]
     targets: List[SyncTargetRead]
