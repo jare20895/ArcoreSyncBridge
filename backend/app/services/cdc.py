@@ -1,25 +1,13 @@
-import time
-import logging
-import psycopg2
-import redis
-import os
-from psycopg2.extras import LogicalReplicationConnection, ReplicationCursor
-from typing import Optional
-from uuid import UUID
-from sqlalchemy.orm import Session
-from app.models.core import DatabaseInstance, SyncCursor
-from app.services.database import DatabaseClient
-
-logger = logging.getLogger(__name__)
-
 class CDCService:
-    def __init__(self, db_session: Session, instance_id: UUID):
+    def __init__(self, db_session: Session, instance_id: UUID, stop_event: Optional[threading.Event] = None):
         self.db = db_session
         self.instance_id = instance_id
         self.instance = self.db.get(DatabaseInstance, instance_id)
         if not self.instance:
             raise ValueError(f"Database instance {instance_id} not found")
         
+        self.stop_event = stop_event or threading.Event() # For graceful shutdown
+
         # Redis Connection
         self.redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
         self.redis = redis.Redis.from_url(self.redis_url)
@@ -39,21 +27,13 @@ class CDCService:
         logger.info(f"Starting CDC for instance {self.instance.instance_label} on slot {self.slot_name}")
         
         dsn = self.client.dsn
-        # Psycopg2 DSN might be compatible with what DatabaseClient produces (postgresql://...)
         
         try:
             with psycopg2.connect(dsn, connection_factory=LogicalReplicationConnection) as conn:
                 cur = conn.cursor()
                 
                 # Create Slot (if not exists)
-                # psycopg2 doesn't have auto-create logic in stream() like v3 might.
-                # We need to create it manually if it doesn't exist.
-                try:
-                    cur.create_replication_slot(self.slot_name, output_plugin='pgoutput')
-                except psycopg2.errors.DuplicateObject:
-                    pass # Exists
-                except Exception as e:
-                    logger.warning(f"Slot creation error (might exist): {e}")
+                # Assumed to be created by API / Ops endpoint
 
                 logger.info(f"Starting replication from LSN {self.start_lsn}")
                 
@@ -65,19 +45,21 @@ class CDCService:
                 # Start
                 cur.start_replication(
                     slot_name=self.slot_name, 
-                    start_lsn=0 if self.start_lsn == "0/0" else int(self.start_lsn.replace('/',''), 16) if '/' in self.start_lsn else 0, # Logic to convert X/Y to int? Wait, psycopg2 expects LSN as int?
-                    # No, start_lsn is usually integer (logid * 4G + offset).
-                    # '0/0' -> 0.
-                    # We need helper to convert.
+                    start_lsn=0 if self.start_lsn == "0/0" else int(self.start_lsn.replace('/',''), 16) if '/' in self.start_lsn else 0, 
                     decode=False, # We want raw bytes for pgoutput
                     options=options
                 )
                 
                 def consume_stream(msg):
+                    if self.stop_event.is_set():
+                        raise StopIteration # Graceful exit from consume_stream
+
                     # Check Backpressure
                     while self.redis.xlen(self.stream_key) > self.max_stream_len:
                         logger.warning("Backpressure: Stream full. Pausing ingestion.")
                         time.sleep(1)
+                        if self.stop_event.is_set():
+                            raise StopIteration
 
                     # Process Message
                     if msg.payload:
@@ -87,14 +69,17 @@ class CDCService:
                     msg.cursor.send_feedback(flush_lsn=msg.data_start)
                     
                     # Persist LSN
-                    # msg.data_start is the LSN
                     self._checkpoint(msg.data_start)
 
                 cur.consume_stream(consume_stream)
 
+        except StopIteration:
+            logger.info("CDC Service stopped gracefully.")
         except Exception as e:
             logger.error(f"CDC Worker Failed: {e}")
             raise
+        finally:
+            conn.close() # Ensure connection is closed
 
     def _handle_message(self, msg):
         event_data = {
