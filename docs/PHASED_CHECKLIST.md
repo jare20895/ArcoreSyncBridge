@@ -75,8 +75,8 @@ This checklist tracks delivery by phase. Items can be moved forward as scope evo
 - [x] Publish CDC strategy ADR (logical decoding vs Debezium) and replication slot plan
 - [x] Implement CDC ingestion with LSN cursors and resumable checkpoints
 - [x] Add backpressure, throttling, and pause/resume controls for CDC pipelines
-- [ ] Integrate CDC events into mapping + sharding + move workflows with ledger updates
-- [ ] Extend conflict resolution and loop prevention to CDC events
+- [x] Integrate CDC events into mapping + sharding + move workflows with ledger updates
+- [x] Extend conflict resolution and loop prevention to CDC events
 - [ ] Add run history/metrics tables and APIs (sync_runs, sync_run_metrics)
 - [ ] UI for CDC status, lag, and run history dashboards
 - [ ] Secrets vault/KMS integration and rotation workflow for SharePoint + DB creds
