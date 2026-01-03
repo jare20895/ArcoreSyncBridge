@@ -1,0 +1,1 @@
+CREATE PUBLICATION arcore_cdc_pub FOR ALL TABLES;

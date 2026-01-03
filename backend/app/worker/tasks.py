@@ -1,11 +1,4 @@
-from uuid import UUID
-from celery.utils.log import get_task_logger
-
-from app.worker.celery_app import celery_app
-from app.models.core import SyncDefinition
-from app.db.session import SessionLocal
-from app.services.pusher import Pusher
-from app.services.synchronizer import Synchronizer
+from app.services.run_history import RunHistoryService
 
 logger = get_task_logger(__name__)
 
@@ -14,6 +7,7 @@ def run_push_sync(self, sync_def_id: str):
     logger.info(f"Starting push sync for definition {sync_def_id}")
     
     db = SessionLocal()
+    run = None
     try:
         sync_def = db.get(SyncDefinition, UUID(sync_def_id))
         if not sync_def:
@@ -22,14 +16,20 @@ def run_push_sync(self, sync_def_id: str):
             
         logger.info(f"Syncing '{sync_def.name}' (Mode: {sync_def.sync_mode})")
         
+        history_service = RunHistoryService(db)
+        run = history_service.start_run(sync_def.id, "PUSH")
+        
         pusher = Pusher(db)
         result = pusher.run_push(sync_def.id)
         
         logger.info(f"Push sync for {sync_def_id} completed successfully: {result}")
+        history_service.end_run(run.id, "COMPLETED", items_processed=result.get("processed_count", 0))
         return f"Success: {result}"
         
     except Exception as e:
         logger.exception(f"Sync failed: {str(e)}")
+        if run:
+            history_service.end_run(run.id, "FAILED", error_message=str(e))
         raise self.retry(exc=e, countdown=60)
     finally:
         db.close()
@@ -39,6 +39,7 @@ def run_ingress_sync(self, sync_def_id: str):
     logger.info(f"Starting ingress sync for definition {sync_def_id}")
     
     db = SessionLocal()
+    run = None
     try:
         sync_def = db.get(SyncDefinition, UUID(sync_def_id))
         if not sync_def:
@@ -51,14 +52,20 @@ def run_ingress_sync(self, sync_def_id: str):
             
         logger.info(f"Ingesting '{sync_def.name}'")
         
+        history_service = RunHistoryService(db)
+        run = history_service.start_run(sync_def.id, "INGRESS")
+        
         syncer = Synchronizer(db)
         result = syncer.run_ingress(sync_def.id)
         
         logger.info(f"Ingress sync for {sync_def_id} completed successfully: {result}")
+        history_service.end_run(run.id, "COMPLETED", items_processed=result.get("processed_count", 0))
         return f"Success: {result}"
         
     except Exception as e:
         logger.exception(f"Ingress failed: {str(e)}")
+        if run:
+            history_service.end_run(run.id, "FAILED", error_message=str(e))
         raise self.retry(exc=e, countdown=60)
     finally:
         db.close()
