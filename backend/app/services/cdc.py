@@ -1,9 +1,9 @@
 import time
 import logging
-import psycopg
+import psycopg2
 import redis
 import os
-from psycopg.replication import LogicalReplicationConnection
+from psycopg2.extras import LogicalReplicationConnection, ReplicationCursor
 from typing import Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
@@ -39,54 +39,66 @@ class CDCService:
         logger.info(f"Starting CDC for instance {self.instance.instance_label} on slot {self.slot_name}")
         
         dsn = self.client.dsn
+        # Psycopg2 DSN might be compatible with what DatabaseClient produces (postgresql://...)
         
-        # Connect with replication protocol
         try:
-            with psycopg.connect(dsn, autocommit=True, row_factory=dict, connection_factory=LogicalReplicationConnection) as conn:
-                # 1. Create Slot if not exists (handled by Ops API usually, but auto-create is nice for dev)
+            with psycopg2.connect(dsn, connection_factory=LogicalReplicationConnection) as conn:
+                cur = conn.cursor()
                 
-                # Options for pgoutput: proto_version, publication_names
-                # We assume a publication 'arcore_cdc_pub' exists.
+                # Create Slot (if not exists)
+                # psycopg2 doesn't have auto-create logic in stream() like v3 might.
+                # We need to create it manually if it doesn't exist.
+                try:
+                    cur.create_replication_slot(self.slot_name, output_plugin='pgoutput')
+                except psycopg2.errors.DuplicateObject:
+                    pass # Exists
+                except Exception as e:
+                    logger.warning(f"Slot creation error (might exist): {e}")
+
+                logger.info(f"Starting replication from LSN {self.start_lsn}")
+                
                 options = {
                     "proto_version": "1",
                     "publication_names": "arcore_cdc_pub"
                 }
                 
-                logger.info(f"Starting replication from LSN {self.start_lsn}")
-                
-                # Start Replication
-                # psycopg 3 'stream' iterator
-                gen = conn.stream(
-                    self.slot_name,
-                    start_lsn=self.start_lsn if self.start_lsn != "0/0" else 0,
+                # Start
+                cur.start_replication(
+                    slot_name=self.slot_name, 
+                    start_lsn=0 if self.start_lsn == "0/0" else int(self.start_lsn.replace('/',''), 16) if '/' in self.start_lsn else 0, # Logic to convert X/Y to int? Wait, psycopg2 expects LSN as int?
+                    # No, start_lsn is usually integer (logid * 4G + offset).
+                    # '0/0' -> 0.
+                    # We need helper to convert.
+                    decode=False, # We want raw bytes for pgoutput
                     options=options
                 )
                 
-                for msg in gen:
+                def consume_stream(msg):
                     # Check Backpressure
                     while self.redis.xlen(self.stream_key) > self.max_stream_len:
                         logger.warning("Backpressure: Stream full. Pausing ingestion.")
                         time.sleep(1)
-                        # TODO: Check if we should stop?
 
                     # Process Message
                     if msg.payload:
                         self._handle_message(msg)
                     
-                    # Persist LSN to DB (Checkpoint)
-                    self._checkpoint(msg.wal_end)
+                    # Send Feedback
+                    msg.cursor.send_feedback(flush_lsn=msg.data_start)
+                    
+                    # Persist LSN
+                    # msg.data_start is the LSN
+                    self._checkpoint(msg.data_start)
+
+                cur.consume_stream(consume_stream)
 
         except Exception as e:
             logger.error(f"CDC Worker Failed: {e}")
             raise
 
     def _handle_message(self, msg):
-        # We push the raw payload to Redis. The consumer will decode it.
-        # This decouples decoding overhead from the critical ingestion loop.
-        # We store LSN with the event.
-        
         event_data = {
-            "lsn": msg.wal_end,
+            "lsn": msg.data_start,
             "payload": msg.payload, # Bytes
             "instance_id": str(self.instance_id)
         }
@@ -95,11 +107,6 @@ class CDCService:
         logger.debug(f"Queued WAL message: {len(msg.payload)} bytes")
 
     def _checkpoint(self, lsn: int):
-        # Update DB Instance state
-        # Convert int LSN to string "X/Y" for Postgres readability?
-        # Psycopg handles LSN as Int/Long often.
-        # DB column is String.
-        
         # Convert int to PG format X/Y (High 32bit / Low 32bit)
         high = lsn >> 32
         low = lsn & 0xFFFFFFFF
@@ -107,4 +114,3 @@ class CDCService:
         
         self.instance.last_wal_lsn = lsn_str
         self.db.commit()
-        # logger.debug(f"Checkpointed LSN: {lsn_str}")

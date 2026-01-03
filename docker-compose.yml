@@ -4,6 +4,7 @@ services:
   db:
     image: postgres:15-alpine
     restart: always
+    command: postgres -c wal_level=logical
     environment:
       POSTGRES_USER: arcore
       POSTGRES_PASSWORD: arcore_password
