@@ -24,6 +24,10 @@ class DatabaseInstance(Base):
     priority: Mapped[int] = mapped_column(Integer, default=1)
     status: Mapped[str] = mapped_column(String, default="ACTIVE")
     
+    # CDC Metadata
+    replication_slot_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    last_wal_lsn: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    
     # Sync sources that use this instance
     sync_sources: Mapped[List["SyncSource"]] = relationship(back_populates="database_instance")
 
@@ -61,6 +65,8 @@ class SyncDefinition(Base):
     cursor_strategy: Mapped[str] = mapped_column(String, default="UPDATED_AT")
     cursor_column_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
     sharding_policy: Mapped[dict] = mapped_column(JSONB, default={})
+    
+    cdc_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     
     sources: Mapped[List["SyncSource"]] = relationship(back_populates="sync_definition")
     targets: Mapped[List["SyncTarget"]] = relationship(back_populates="sync_definition")
