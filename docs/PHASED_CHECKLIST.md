@@ -73,7 +73,7 @@ This checklist tracks delivery by phase. Items can be moved forward as scope evo
 
 ## Phase 5: Real-Time CDC and Governance
 - [x] Publish CDC strategy ADR (logical decoding vs Debezium) and replication slot plan
-- [ ] Implement CDC ingestion with LSN cursors and resumable checkpoints
+- [x] Implement CDC ingestion with LSN cursors and resumable checkpoints
 - [ ] Add backpressure, throttling, and pause/resume controls for CDC pipelines
 - [ ] Integrate CDC events into mapping + sharding + move workflows with ledger updates
 - [ ] Extend conflict resolution and loop prevention to CDC events
