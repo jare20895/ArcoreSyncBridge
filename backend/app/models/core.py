@@ -183,3 +183,16 @@ class MoveAuditLog(Base):
     moved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     status: Mapped[str] = mapped_column(String, default="SUCCESS") # SUCCESS, FAILED_ORPHAN
     details: Mapped[Optional[str]] = mapped_column(String, nullable=True) # Error msg or additional info
+
+class SyncRun(Base):
+    __tablename__ = "sync_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sync_def_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    run_type: Mapped[str] = mapped_column(String) # PUSH, INGRESS, CDC
+    status: Mapped[str] = mapped_column(String) # RUNNING, COMPLETED, FAILED
+    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    end_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    items_processed: Mapped[int] = mapped_column(Integer, default=0)
+    items_failed: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[Optional[str]] = mapped_column(String, nullable=True)

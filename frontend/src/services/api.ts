@@ -66,4 +66,9 @@ export const triggerSync = async (syncDefId: string) => {
   return res.data;
 };
 
+export const getSyncRuns = async () => {
+  const res = await api.get('/runs/');
+  return res.data;
+};
+
 export default api;
