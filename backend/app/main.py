@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqladmin import Admin
 
-from app.api.endpoints import database_instances, sharepoint_connections, provisioning, sharepoint_discovery, sync_definitions, moves, ops, replication, runs
+from app.api.endpoints import database_instances, sharepoint_connections, provisioning, sharepoint_discovery, sync_definitions, moves, ops, replication, runs, applications, databases
 from app.db.session import engine
 from app.admin import (
     DatabaseInstanceAdmin,
@@ -68,6 +68,8 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RequestIDMiddleware)
 
+app.include_router(applications.router, prefix="/api/v1/applications", tags=["applications"])
+app.include_router(databases.router, prefix="/api/v1/databases", tags=["databases"])
 app.include_router(database_instances.router, prefix="/api/v1/database-instances", tags=["database-instances"])
 app.include_router(sharepoint_connections.router, prefix="/api/v1/sharepoint-connections", tags=["sharepoint-connections"])
 app.include_router(provisioning.router, prefix="/api/v1/provisioning", tags=["provisioning"])

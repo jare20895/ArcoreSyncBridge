@@ -6,6 +6,60 @@ const api = axios.create({
   baseURL: `${API_URL}/api/v1`,
 });
 
+// Applications
+export const getApplications = async () => {
+  const res = await api.get('/applications/');
+  return res.data;
+};
+
+export const getApplication = async (id: string) => {
+  const res = await api.get(`/applications/${id}`);
+  return res.data;
+};
+
+export const createApplication = async (data: any) => {
+  const res = await api.post('/applications/', data);
+  return res.data;
+};
+
+export const updateApplication = async (id: string, data: any) => {
+  const res = await api.put(`/applications/${id}`, data);
+  return res.data;
+};
+
+export const deleteApplication = async (id: string) => {
+  const res = await api.delete(`/applications/${id}`);
+  return res.data;
+};
+
+// Databases
+export const getDatabases = async (applicationId?: string) => {
+  const params = applicationId ? { application_id: applicationId } : {};
+  const res = await api.get('/databases/', { params });
+  return res.data;
+};
+
+export const getDatabase = async (id: string) => {
+  const res = await api.get(`/databases/${id}`);
+  return res.data;
+};
+
+export const createDatabase = async (data: any) => {
+  const res = await api.post('/databases/', data);
+  return res.data;
+};
+
+export const updateDatabase = async (id: string, data: any) => {
+  const res = await api.put(`/databases/${id}`, data);
+  return res.data;
+};
+
+export const deleteDatabase = async (id: string) => {
+  const res = await api.delete(`/databases/${id}`);
+  return res.data;
+};
+
+// Database Instances
 export const getDatabaseInstances = async () => {
   const res = await api.get('/database-instances/');
   return res.data;
