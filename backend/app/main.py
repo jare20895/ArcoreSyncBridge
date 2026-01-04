@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqladmin import Admin
 
-from app.api.endpoints import database_instances, sharepoint_connections, provisioning, sharepoint_discovery, sync_definitions, moves, ops, replication, runs, applications, databases, data_sources, data_targets
+from app.api.endpoints import database_instances, sharepoint_connections, provisioning, sharepoint_discovery, sync_definitions, moves, ops, replication, runs, applications, databases, data_sources, data_targets, field_mappings
 from app.db.session import engine
 from app.admin import (
     DatabaseInstanceAdmin,
@@ -77,6 +77,7 @@ app.include_router(provisioning.router, prefix="/api/v1/provisioning", tags=["pr
 app.include_router(sharepoint_discovery.router, prefix="/api/v1/sharepoint-discovery", tags=["sharepoint-discovery"])
 app.include_router(data_targets.router, prefix="/api/v1/data-targets", tags=["data-targets"])
 app.include_router(sync_definitions.router, prefix="/api/v1/sync-definitions", tags=["sync-definitions"])
+app.include_router(field_mappings.router, prefix="/api/v1/field-mappings", tags=["field-mappings"])
 app.include_router(moves.router, prefix="/api/v1/moves", tags=["moves"])
 app.include_router(ops.router, prefix="/api/v1/ops", tags=["ops"])
 app.include_router(replication.router, prefix="/api/v1/replication", tags=["replication"])

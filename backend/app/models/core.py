@@ -188,12 +188,12 @@ class SyncKeyColumn(Base):
 
 class FieldMapping(Base):
     __tablename__ = "field_mappings"
-    
+
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id", ondelete="CASCADE"))
     source_column_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     target_column_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
-    
+
     # Added to support direct mapping without Inventory tables
     source_column_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     target_column_name: Mapped[Optional[str]] = mapped_column(String, nullable=True) # Internal Name in SharePoint
@@ -202,6 +202,13 @@ class FieldMapping(Base):
     transform_rule: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     is_key: Mapped[bool] = mapped_column(Boolean, default=False)
     is_readonly: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Phase 6: Directional Mapping
+    # Values: BIDIRECTIONAL (default), PUSH_ONLY (source->target), PULL_ONLY (target->source)
+    sync_direction: Mapped[str] = mapped_column(String, default="BIDIRECTIONAL")
+
+    # Phase 6: System Field Support (for SharePoint readonly fields like ID, Created, Modified)
+    is_system_field: Mapped[bool] = mapped_column(Boolean, default=False)
 
     sync_definition: Mapped["SyncDefinition"] = relationship(back_populates="field_mappings")
 

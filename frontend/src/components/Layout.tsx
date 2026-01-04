@@ -226,8 +226,15 @@ export default function Layout({ children }: LayoutProps) {
                         </li>
                     </>
                 )}
+                {activeTab?.name === 'Runs & Ledger' && (
+                    <>
+                        <li><Link href="/runs" className="block px-3 py-2 rounded bg-light-primary/5 text-light-primary dark:bg-dark-primary/20 dark:text-dark-primary font-medium">Run History</Link></li>
+                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Sync Ledger</a></li>
+                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Scheduled Jobs</a></li>
+                    </>
+                )}
                  {/* Fallback for other tabs */}
-                 {!['Dashboard', 'Sync Definitions', 'Data Sources', 'Data Targets', 'Connections'].includes(activeTab?.name || '') && (
+                 {!['Dashboard', 'Sync Definitions', 'Data Sources', 'Data Targets', 'Connections', 'Runs & Ledger'].includes(activeTab?.name || '') && (
                      <li className="text-sm text-gray-400 italic px-3">No tools available</li>
                  )}
              </ul>

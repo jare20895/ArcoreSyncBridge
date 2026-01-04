@@ -133,12 +133,16 @@ class Synchronizer:
         schema_name = sync_def.source_schema or "public"
         table_name = sync_def.source_table_name or sync_def.name # Fallback to Def Name if not set
         
-        # Pre-load field mappings
+        # Pre-load field mappings with directional filtering
         # Map InternalName -> (SourceColName, TransformRule)
         sp_to_pg_map = {}
         pg_pk_col = "id" # Default
-        
+
         for fm in sync_def.field_mappings:
+            # Skip PUSH_ONLY fields in pull sync (they should only sync from Database to SharePoint)
+            if fm.sync_direction == "PUSH_ONLY":
+                continue
+
             if fm.target_column_name and fm.source_column_name:
                 sp_to_pg_map[fm.target_column_name] = fm.source_column_name
             if fm.is_key and fm.source_column_name:

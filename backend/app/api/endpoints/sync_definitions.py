@@ -69,11 +69,12 @@ def create_sync_definition(
             sc_norm = sc.column_name.lower()
             if sc_norm in target_map:
                 tc = target_map[sc_norm]
-                
-                # Skip Read-Only Target Columns (e.g. ID, Created, Modified)
-                # We cannot write to them, so mapping them for sync is invalid (unless for matching/keys, but usually keys use custom fields)
-                if tc.is_readonly:
-                    continue
+
+                # Phase 6: System Field Support
+                # Readonly SharePoint fields (ID, Created, Modified, Author, Editor) can be mapped
+                # for pulling metadata, but must use PULL_ONLY sync direction
+                is_system_field = tc.is_readonly
+                sync_direction = "PULL_ONLY" if is_system_field else "BIDIRECTIONAL"
 
                 # Map it
                 db.add(FieldMapping(
@@ -84,7 +85,9 @@ def create_sync_definition(
                     target_column_name=tc.column_name,
                     target_type=tc.column_type, # Or derive from sc.data_type
                     is_key=sc.is_primary_key,
-                    is_readonly=tc.is_readonly
+                    is_readonly=tc.is_readonly,
+                    is_system_field=is_system_field,
+                    sync_direction=sync_direction
                 ))
 
     try:

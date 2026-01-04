@@ -2,7 +2,8 @@ import hashlib
 import json
 from typing import Optional, List, Dict, Any
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, date
+from decimal import Decimal
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -153,23 +154,36 @@ class Pusher:
                  table_name = tbl.table_name
                  schema_name = tbl.schema_name
 
+        print(f"[DEBUG] Fetching changed rows from {schema_name}.{table_name} WHERE {cursor_col} > {last_watermark}")
         rows = db_client.fetch_changed_rows(schema_name, table_name, cursor_col, last_watermark)
-        
+        print(f"[DEBUG] Found {len(rows)} changed rows to process")
+
         processed_count = 0
         max_cursor_seen = last_watermark
 
-        # Pre-load field mappings
+        # Pre-load field mappings with directional filtering
         # Map PG Col -> Target Col
         pg_to_sp_map = {}
         pg_pk_col = "id"
-        
+
         for fm in sync_def.field_mappings:
+            # Skip PULL_ONLY fields in push sync (they should only sync from SharePoint to Database)
+            if fm.sync_direction == "PULL_ONLY":
+                continue
+
+            # Phase 6: System Field Safety Check
+            # System fields are SharePoint readonly metadata (ID, Created, Modified, etc.)
+            # They should never be written to SharePoint, even if accidentally set to BIDIRECTIONAL
+            if fm.is_system_field:
+                print(f"[WARN] Skipping system field '{fm.target_column_name}' in push sync (readonly metadata)")
+                continue
+
             if fm.source_column_name and fm.target_column_name:
                 pg_to_sp_map[fm.source_column_name] = fm.target_column_name
             if fm.is_key and fm.source_column_name:
                 pg_pk_col = fm.source_column_name
-        
-        print(f"[DEBUG] Field Mappings: {len(pg_to_sp_map)} fields mapped. PK: {pg_pk_col}")
+
+        print(f"[DEBUG] Field Mappings: {len(pg_to_sp_map)} fields mapped for PUSH (excluding PULL_ONLY). PK: {pg_pk_col}")
 
         failed_count = 0
         success_count = 0
@@ -179,12 +193,14 @@ class Pusher:
             source_id = str(row.get(pg_pk_col))
             id_hash = hashlib.sha256(source_id.encode()).hexdigest()
             
-            # Extract content for SP
+            # Extract content for SP with type serialization
             sp_fields = {}
             filtered_row_data = {} # For hash
             for pg_col, sp_col in pg_to_sp_map.items():
                 val = row.get(pg_col)
-                sp_fields[sp_col] = val
+                # Serialize Python types to SharePoint/JSON-compatible types
+                serialized_val = self._serialize_value_for_sharepoint(val)
+                sp_fields[sp_col] = serialized_val
                 filtered_row_data[pg_col] = val
             
             # If no fields mapped, we can't sync content (unless we just want to create empty placeholders, which is rare)
@@ -224,6 +240,14 @@ class Pusher:
                 failed_count += 1
                 continue
 
+            # Resolve the actual SharePoint GUID for API calls (not the database UUID)
+            if not sp_list_record:
+                print(f"[ERROR] Target list {target_list_id} not found in inventory. Cannot determine SharePoint GUID.")
+                failed_count += 1
+                continue
+
+            sp_list_guid = sp_list_record.list_id  # This is the actual SharePoint GUID
+
             try:
                 content_service, site_id = self._get_content_service(target_obj.sharepoint_connection_id, target_obj.site_id)
             except Exception as e:
@@ -250,7 +274,7 @@ class Pusher:
             if ledger_entry:
                 # Update SP Item
                 try:
-                    content_service.update_item(site_id, target_list_id, str(ledger_entry.sp_item_id), sp_fields)
+                    content_service.update_item(site_id, sp_list_guid, str(ledger_entry.sp_item_id), sp_fields)
                     
                     # Update Ledger
                     ledger_entry.content_hash = content_hash
@@ -258,6 +282,9 @@ class Pusher:
                     ledger_entry.provenance = "PUSH"
                     ledger_entry.last_source_ts = row_ts if isinstance(row_ts, datetime) else datetime.utcnow() # approx
                     success_count += 1
+                    # Only advance cursor on successful update
+                    if str(row_ts) > str(max_cursor_seen if max_cursor_seen else ""):
+                        max_cursor_seen = str(row_ts)
                 except Exception as e:
                     # Log error
                     print(f"Failed to update SP item: {e}")
@@ -265,10 +292,10 @@ class Pusher:
             else:
                 # Create SP Item
                 try:
-                    sp_id_str = content_service.create_item(site_id, target_list_id, sp_fields)
+                    sp_id_str = content_service.create_item(site_id, sp_list_guid, sp_fields)
                     if sp_id_str:
                         sp_item_id = int(sp_id_str)
-                        
+
                         # Create Ledger
                         new_entry = SyncLedgerEntry(
                             sync_def_id=sync_def_id,
@@ -276,7 +303,7 @@ class Pusher:
                             source_identity=source_id,
                             source_key_strategy="PRIMARY_KEY",
                             source_instance_id=db_instance.id,
-                            sp_list_id=target_list_id,
+                            sp_list_id=sp_list_guid,  # Store SharePoint GUID in ledger
                             sp_item_id=sp_item_id,
                             content_hash=content_hash,
                             last_source_ts=row_ts if isinstance(row_ts, datetime) else datetime.utcnow(),
@@ -285,6 +312,9 @@ class Pusher:
                         )
                         self.db.add(new_entry)
                         success_count += 1
+                        # Only advance cursor on successful create
+                        if str(row_ts) > str(max_cursor_seen if max_cursor_seen else ""):
+                            max_cursor_seen = str(row_ts)
                     else:
                         print(f"Graph API returned no ID for created item. Payload: {sp_fields}")
                         failed_count += 1
@@ -293,8 +323,6 @@ class Pusher:
                      failed_count += 1
 
             processed_count += 1
-            if str(row_ts) > str(max_cursor_seen if max_cursor_seen else ""):
-                max_cursor_seen = str(row_ts)
 
         # 8. Update Cursor
         if max_cursor_seen:
@@ -329,6 +357,26 @@ class Pusher:
             "failed_count": failed_count,
             "cursor_updated": bool(max_cursor_seen)
         }
+
+    def _serialize_value_for_sharepoint(self, value: Any) -> Any:
+        """
+        Convert Python types to SharePoint/JSON-compatible types.
+        """
+        if value is None:
+            return None
+        elif isinstance(value, datetime):
+            # SharePoint expects ISO 8601 format with timezone
+            return value.isoformat()
+        elif isinstance(value, date):
+            # Convert date to datetime at midnight, then to ISO 8601
+            return datetime.combine(value, datetime.min.time()).isoformat()
+        elif isinstance(value, Decimal):
+            # Convert Decimal to float for JSON serialization
+            return float(value)
+        elif isinstance(value, UUID):
+            return str(value)
+        else:
+            return value
 
     def _compute_content_hash(self, data: Dict[str, Any]) -> str:
         serialized = json.dumps(data, sort_keys=True, default=str)

@@ -12,6 +12,10 @@ class FieldMappingBase(BaseModel):
     transform_rule: Optional[str] = None
     is_key: bool = False
     is_readonly: bool = False
+    # Phase 6: Directional Mapping
+    sync_direction: str = "BIDIRECTIONAL"  # BIDIRECTIONAL, PUSH_ONLY, PULL_ONLY
+    # Phase 6: System Field Support
+    is_system_field: bool = False
 
 class FieldMappingCreate(FieldMappingBase):
     pass

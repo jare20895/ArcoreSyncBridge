@@ -37,14 +37,20 @@ Represents physical database endpoints. Multiple instances allow multi-source sy
 - instance_label (text)
 - host (text)
 - port (integer)
-- database_name_override (text)
-- config (JSONB, encrypted at rest)
+- db_name (text) - actual database name
+- db_user (text) - database username
+- db_password (text) - database password (encrypted at rest, future: vault/KMS)
+- config (JSONB) - additional configuration (SSL, timeout, etc.)
 - role (PRIMARY, SECONDARY)
 - priority (integer)
 - status (ACTIVE, DISABLED)
-- valid_from (timestamp)
-- valid_to (timestamp)
-- last_verified_at (timestamp)
+- valid_from (timestamp, nullable)
+- valid_to (timestamp, nullable)
+- last_verified_at (timestamp, nullable)
+- created_at (timestamp)
+- updated_at (timestamp)
+
+Note: Credentials are stored on the instance record. Future enhancement: migrate to vault/KMS with rotation.
 
 ### database_tables
 Inventory of tables per database.
@@ -102,13 +108,18 @@ Source table metrics captured per database instance.
 ### sharepoint_connections
 Represents Graph app credentials and tenant context.
 - id (UUID, PK)
+- name (text) - friendly name for the connection
 - tenant_id (text)
 - client_id (text)
-- authority_host (text)
-- scopes (JSONB)
-- config (JSONB, encrypted at rest)
+- client_secret (text) - encrypted at rest, primary auth source (env vars are dev fallback)
+- authority_host (text) - defaults to https://login.microsoftonline.com
+- scopes (JSONB) - Graph API scopes, defaults to ["https://graph.microsoft.com/.default"]
 - status (ACTIVE, DISABLED)
-- last_verified_at (timestamp)
+- last_verified_at (timestamp, nullable)
+- created_at (timestamp)
+- updated_at (timestamp)
+
+Note: client_secret is the primary authentication source. Environment variables are used as fallback for local development only.
 
 ### sharepoint_sites
 Canonical SharePoint site inventory.
@@ -171,9 +182,13 @@ Allowed SharePoint targets for a sync definition (multi-list routing).
 - id (UUID, PK)
 - sync_def_id (FK -> sync_definitions)
 - target_list_id (FK -> sharepoint_lists)
+- connection_id (FK -> sharepoint_connections) - per-target SharePoint context
+- site_id (FK -> sharepoint_sites) - per-target SharePoint context
 - is_default (boolean)
 - priority (integer)
 - status (ACTIVE, DISABLED)
+- created_at (timestamp)
+- updated_at (timestamp)
 
 ### sync_sources
 Binds a sync definition to one or more database instances.
@@ -195,14 +210,20 @@ Selected composite key columns used when row UID is unstable.
 Row identity strategy: compute source_identity from the key strategy and key columns (ordered, delimiter-joined). Store a stable source_identity_hash (SHA-256) in the ledger to avoid duplicates if source row IDs change.
 
 ### field_mappings
-Maps table columns to SharePoint columns.
+Maps table columns to SharePoint columns with directional control.
 - id (UUID, PK)
 - sync_def_id (FK -> sync_definitions)
 - source_column_id (FK -> table_columns)
+- source_column_name (text) - denormalized for quick lookup
 - target_column_id (FK -> sharepoint_columns)
+- target_column_name (text) - denormalized for quick lookup
+- target_type (text) - SharePoint column type
+- sync_direction (BIDIRECTIONAL, PUSH_ONLY, PULL_ONLY)
+- is_system_field (boolean) - true for readonly SharePoint system fields (ID, Created, Modified)
 - transform_rule (text)
 - is_key (boolean)
-- is_readonly (boolean)
+- created_at (timestamp)
+- updated_at (timestamp)
 
 ### introspection_runs
 Tracks each metadata extraction run per database.
@@ -214,31 +235,39 @@ Tracks each metadata extraction run per database.
 - stats (JSONB)
 
 ### sync_ledger
-Idempotent mapping between source rows and SharePoint items.
+Idempotent mapping between source rows and SharePoint items with loop prevention.
 - id (UUID, PK)
-- sync_def_id (FK -> sync_definitions)
-- source_identity (text)
-- source_identity_hash (text)
-- source_key_strategy (text)
-- source_instance_id (FK -> database_instances)
-- sp_list_id (text)
-- sp_item_id (integer)
-- content_hash (text)
-- last_source_ts (timestamp)
-- last_sync_ts (timestamp)
-- provenance (PUSH, PULL)
+- sync_def_id (FK -> sync_definitions) - scoped per definition
+- source_identity (text) - human-readable composite key
+- source_identity_hash (text) - SHA-256 hash for uniqueness
+- source_key_strategy (PRIMARY_KEY, UNIQUE_CONSTRAINT, COMPOSITE_COLUMNS, HASHED)
+- source_instance_id (FK -> database_instances, nullable) - tracks which instance last synced
+- sp_list_id (text) - SharePoint list GUID
+- sp_item_id (integer) - SharePoint item ID
+- content_hash (text) - SHA-256 hash of synchronized content for change detection
+- last_source_ts (timestamp) - last modified time from source
+- last_sync_ts (timestamp) - last sync operation time
+- provenance (PUSH, PULL) - direction of last sync for loop prevention
+- created_at (timestamp)
+- updated_at (timestamp)
 
 ### sync_cursors
 Persisted cursors for incremental sync (source watermarks and Graph delta links).
 - id (UUID, PK)
 - sync_def_id (FK -> sync_definitions)
-- cursor_scope (SOURCE, TARGET)
-- cursor_type (TIMESTAMP, LSN, DELTA_LINK)
-- cursor_value (text)
-- source_instance_id (FK -> database_instances, nullable)
-- target_list_id (FK -> sharepoint_lists, nullable)
-- last_run_id (FK -> sync_runs)
+- cursor_scope (SOURCE, TARGET) - whether cursor is for source DB or target SharePoint
+- cursor_type (TIMESTAMP, LSN, DELTA_LINK) - type of cursor strategy
+- cursor_value (text) - actual cursor value (timestamp, LSN, or delta URL)
+- source_instance_id (FK -> database_instances, nullable) - for source cursors
+- target_list_id (FK -> sharepoint_lists, nullable) - for target cursors
+- last_run_id (FK -> sync_runs, nullable)
 - updated_at (timestamp)
+- created_at (timestamp)
+
+Note: Cursors are scoped by (sync_def_id, cursor_scope, source_instance_id, target_list_id) to support:
+- Multiple source instances per definition
+- Multiple target lists per definition (sharding)
+- Separate push and pull cursors
 
 ### schema_snapshots
 Snapshots of table metadata for drift detection.
@@ -251,15 +280,17 @@ Snapshots of table metadata for drift detection.
 - indexes (JSONB)
 
 ### sync_runs
+Tracks each sync execution with detailed metrics and status.
 - id (UUID, PK)
 - sync_def_id (FK -> sync_definitions)
-- source_instance_id (FK -> database_instances)
-- target_list_id (FK -> sharepoint_lists)
-- mode (PUSH, PULL)
-- started_at (timestamp)
-- ended_at (timestamp)
-- status (SUCCESS, PARTIAL, FAILED)
-- stats (JSONB)
+- run_type (PUSH, INGRESS, CDC) - type of sync operation
+- status (RUNNING, COMPLETED, FAILED)
+- start_time (timestamp)
+- end_time (timestamp, nullable)
+- items_processed (integer) - total items attempted
+- items_failed (integer) - number of failed items
+- error_message (text, nullable) - error details if failed
+- created_at (timestamp)
 
 ### sync_metrics
 Rollup metrics per sync definition and target list.

@@ -1,14 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { 
-    getSyncDefinition, 
-    generateDriftReport, 
-    triggerSync, 
+import {
+    getSyncDefinition,
+    generateDriftReport,
+    triggerSync,
     updateSyncDefinition,
     getSharePointSites,
-    getSharePointLists
+    getSharePointLists,
+    getSourceTableDetails,
+    bulkUpdateFieldMappings,
+    getSharePointColumns,
+    resetSyncCursors
 } from '../../services/api';
-import { AlertTriangle, CheckCircle, RefreshCw, ArrowRightLeft, ArrowRight, Play, Settings, Database, Layers, Activity, List as ListIcon, Edit2, X, Save } from 'lucide-react';
+import { AlertTriangle, CheckCircle, RefreshCw, ArrowRightLeft, ArrowRight, Play, Settings, Database, Layers, Activity, List as ListIcon, Edit2, X, Save, RotateCcw } from 'lucide-react';
+import FieldMappingEditor from '../../components/FieldMappingEditor';
 
 export default function SyncDefinitionDetail() {
   const router = useRouter();
@@ -25,6 +30,10 @@ export default function SyncDefinitionDetail() {
   const [targetLists, setTargetLists] = useState<any[]>([]);
   const [editSiteId, setEditSiteId] = useState('');
   const [editListId, setEditListId] = useState('');
+
+  // Field Mapping State
+  const [sourceColumns, setSourceColumns] = useState<any[]>([]);
+  const [targetColumns, setTargetColumns] = useState<any[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -44,6 +53,54 @@ export default function SyncDefinitionDetail() {
           getSharePointLists(editSiteId).then(setTargetLists).catch(console.error);
       }
   }, [editSiteId]);
+
+  // Load Source and Target Columns for Field Mapping Editor
+  useEffect(() => {
+      if (def && def.source_table_id && activeSection === 'mappings') {
+          // Load source database columns
+          getSourceTableDetails(def.source_table_id)
+              .then(details => {
+                  if (details && details.columns) {
+                      setSourceColumns(details.columns.map((col: any) => ({
+                          id: col.id || col.column_name,
+                          name: col.column_name,
+                          data_type: col.data_type
+                      })));
+                  }
+              })
+              .catch(console.error);
+
+          // Load target SharePoint columns if target_list_id is set
+          if (def.target_list_id) {
+              getSharePointColumns(def.target_list_id)
+                  .then(columns => {
+                      if (columns && columns.length > 0) {
+                          setTargetColumns(columns.map((col: any) => ({
+                              id: col.id || col.column_name,
+                              name: col.column_name,
+                              data_type: col.column_type,
+                              is_readonly: col.is_readonly || false,
+                              is_required: col.is_required || false
+                          })));
+                      }
+                  })
+                  .catch(err => {
+                      console.error('Failed to load SharePoint columns:', err);
+                      // Fallback: use existing mappings if API fails
+                      if (def.field_mappings && def.field_mappings.length > 0) {
+                          const uniqueTargets = Array.from(new Set(
+                              def.field_mappings.map((m: any) => m.target_column_name)
+                          )).map(name => ({
+                              id: name,
+                              name: name as string,
+                              data_type: 'text'
+                          }));
+                          setTargetColumns(uniqueTargets);
+                      }
+                  });
+          }
+      }
+  }, [def, activeSection]);
 
   const handleRunReport = async () => {
     setLoadingReport(true);
@@ -75,6 +132,20 @@ export default function SyncDefinitionDetail() {
     }
   };
 
+  const handleResetCursors = async () => {
+    if (!id) return;
+    if (!confirm("Are you sure you want to reset all sync cursors?\n\nThis will force the next sync to start from the beginning and process all rows.")) {
+        return;
+    }
+    try {
+        const res = await resetSyncCursors(id as string);
+        alert(`Success: ${res.message}`);
+    } catch (e) {
+        console.error(e);
+        alert("Failed to reset cursors: " + String(e));
+    }
+  };
+
   const handleModeToggle = async (newMode: string) => {
       if (!def || !id) return;
       try {
@@ -83,6 +154,21 @@ export default function SyncDefinitionDetail() {
       } catch (e) {
           console.error(e);
           alert("Failed to update sync mode");
+      }
+  };
+
+  const handleSaveMappings = async (mappings: any[]) => {
+      if (!id) return;
+      try {
+          // Use dedicated field mappings API endpoint for bulk update
+          const updatedMappings = await bulkUpdateFieldMappings(id as string, mappings);
+          // Refresh the sync definition to get the latest data
+          const updated = await getSyncDefinition(id as string);
+          setDef(updated);
+          alert('Field mappings saved successfully!');
+      } catch (e) {
+          console.error(e);
+          throw new Error('Failed to save field mappings');
       }
   };
 
@@ -165,6 +251,14 @@ export default function SyncDefinitionDetail() {
                     <Play size={16} className={runningSync ? "animate-spin" : ""} />
                     <span>{runningSync ? "Running..." : "Run Sync Now"}</span>
                  </button>
+                 <button
+                    onClick={handleResetCursors}
+                    className="flex items-center space-x-2 px-4 py-2 bg-orange-500 dark:bg-orange-600 text-white rounded shadow-sm text-sm font-medium hover:bg-opacity-90"
+                    title="Reset sync cursors to start from beginning"
+                 >
+                    <RotateCcw size={16} />
+                    <span>Reset Cursor</span>
+                 </button>
             </div>
         </header>
 
@@ -232,48 +326,13 @@ export default function SyncDefinitionDetail() {
             )}
 
             {activeSection === 'mappings' && (
-                <div className="bg-white dark:bg-dark-surface rounded border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
-                    {def.field_mappings && def.field_mappings.length > 0 ? (
-                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                            <thead className="bg-gray-50 dark:bg-gray-800">
-                                <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source Column</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target Column</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Key</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Read Only</th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-white dark:bg-dark-surface divide-y divide-gray-200 dark:divide-gray-700">
-                                {def.field_mappings.map((m: any) => (
-                                    <tr key={m.id}>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-light-text-primary dark:text-dark-text-primary">
-                                            {m.source_column_name}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-light-text-primary dark:text-dark-text-primary">
-                                            {m.target_column_name}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            {m.target_type}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            {m.is_key ? <CheckCircle size={16} className="text-green-500"/> : '-'}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            {m.is_readonly ? <CheckCircle size={16} className="text-gray-400"/> : '-'}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    ) : (
-                        <div className="p-8 text-center text-gray-500">
-                            No field mappings configured.
-                            <br/>
-                            <span className="text-xs">Mappings are auto-generated on creation if source and target schemas match.</span>
-                        </div>
-                    )}
-                </div>
+                <FieldMappingEditor
+                    mappings={def.field_mappings || []}
+                    sourceColumns={sourceColumns}
+                    targetColumns={targetColumns}
+                    onSave={handleSaveMappings}
+                    readonly={false}
+                />
             )}
 
             {activeSection === 'targets' && (

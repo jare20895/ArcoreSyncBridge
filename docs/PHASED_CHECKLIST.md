@@ -71,22 +71,28 @@ This checklist tracks delivery by phase. Items can be moved forward as scope evo
 - [x] Disaster recovery runbook (Backup/Restore)
 - [x] Release flow and Rollback plan tested
 
-## Phase 5: Real-Time CDC and Governance
+## Phase 5: Real-Time CDC and Governance ✅ COMPLETED
 - [x] Publish CDC strategy ADR (logical decoding vs Debezium) and replication slot plan
 - [x] Implement CDC ingestion with LSN cursors and resumable checkpoints
 - [x] Add backpressure, throttling, and pause/resume controls for CDC pipelines
 - [x] Integrate CDC events into mapping + sharding + move workflows with ledger updates
 - [x] Extend conflict resolution and loop prevention to CDC events
-- [ ] Add run history/metrics tables and APIs (sync_runs, sync_run_metrics)
-- [ ] UI for CDC status, lag, and run history dashboards
-- [ ] Secrets vault/KMS integration and rotation workflow for SharePoint + DB creds
-- [ ] Configuration audit logging and governance controls
-- [ ] CDC end-to-end integration tests and perf regression gates
+- [x] Add run history/metrics tables and APIs (sync_runs table, SyncRun model, runs API endpoints)
+- [x] UI for run history dashboards (/runs page with filtering, status tracking, item counts)
 - [x] Add ops endpoints to create/inspect/drop replication slots and validate required Postgres permissions
+- [-] Secrets vault/KMS integration and rotation workflow (Deferred - using env for now)
+- [-] Configuration audit logging and governance controls (Deferred to Phase 7)
+- [-] CDC end-to-end integration tests and perf regression gates (Deferred to Phase 7)
+- [-] CDC status and lag monitoring UI (Deferred to Phase 7 - scheduler dashboard)
 
-## Phase 6: Advanced Mapping & Two-Way Fidelity
-- [ ] **Interactive Mapping Editor UI**: Full CRUD for mappings (add, remove, type select) in Sync Definition Detail.
-- [ ] **System Field Ingress**: Support mapping Read-Only SharePoint fields (ID, Created, Modified) to writable DB columns (e.g. `_sp_id`, `_sp_modified`) for ingress.
-- [ ] **Directional Mapping**: Configurable per-field sync direction (Push Only, Pull Only, Bi-directional).
-- [ ] **Rich Type Support**: Enhanced handling for Lookup (ID vs Value), Person (Email vs Name), and Choice (Text[]).
-- [ ] **Data Transformation**: Basic transform rules (Upper, Lower, Trim, Regex) in mapping layer.
+## Phase 6: Advanced Mapping & Two-Way Fidelity ✅ COMPLETED
+- [x] **Interactive Mapping Editor UI**: Full CRUD for mappings (add, remove, type select) in Sync Definition Detail (FieldMappingEditor component).
+- [x] **System Field Ingress**: Support mapping Read-Only SharePoint fields (ID, Created, Modified) to writable DB columns via is_system_field flag and auto PULL_ONLY direction.
+- [x] **Directional Mapping**: Configurable per-field sync direction (PUSH_ONLY, PULL_ONLY, BIDIRECTIONAL) with filtering in push/pull workers.
+- [x] **Type Serialization**: Automatic conversion of Python datetime/Decimal to JSON for SharePoint compatibility.
+- [x] **Field Mapping API**: Dedicated CRUD endpoints for field mappings (/field-mappings).
+- [x] **Target Column Fetching**: Load actual SharePoint columns from API (not mocked) with is_readonly detection.
+- [x] **Reset Cursor UI**: "Reset Cursor" button for testing and recovering from failed syncs.
+- [x] **SharePoint GUID Resolution**: Fixed UUID vs GUID bug in push sync worker.
+- [ ] **Rich Type Support**: Enhanced handling for Lookup (ID vs Value), Person (Email vs Name), and Choice (Text[]) (Deferred to Phase 7).
+- [ ] **Data Transformation**: Transform rule execution (Upper, Lower, Trim, Regex) in mapping layer (Deferred to Phase 7).

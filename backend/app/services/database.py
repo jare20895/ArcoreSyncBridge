@@ -93,9 +93,11 @@ class DatabaseClient:
         if cursor_val is not None:
             where_clause = f"WHERE {cursor_col} > %s"
             params.append(cursor_val)
-        
+
         query = f"SELECT * FROM {schema}.{table} {where_clause} ORDER BY {cursor_col} ASC LIMIT {limit}"
-        
+        print(f"[DEBUG] DatabaseClient SQL: {query}")
+        print(f"[DEBUG] DatabaseClient Params: {params}")
+
         with psycopg.connect(self.dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute(query, params)

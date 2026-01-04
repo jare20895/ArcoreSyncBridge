@@ -93,14 +93,29 @@ Notes:
 ### 1.7 FieldMapping
 ```json
 {
+  "id": "uuid",
+  "sync_def_id": "uuid",
   "source_column_id": "uuid",
+  "source_column_name": "budget_amount",
   "target_column_id": "uuid",
+  "target_column_name": "BudgetAmount",
   "target_type": "number",
-  "transform_rule": "CAST_TO_DECIMAL",
-  "is_key": false,
-  "is_readonly": false
+  "sync_direction": "BIDIRECTIONAL",
+  "is_system_field": false,
+  "transform_rule": null,
+  "is_key": false
 }
 ```
+
+**Sync Direction Values:**
+- `BIDIRECTIONAL`: Field syncs in both push (DB→SP) and pull (SP→DB)
+- `PUSH_ONLY`: Field only syncs during push operations (DB→SP)
+- `PULL_ONLY`: Field only syncs during pull operations (SP→DB)
+
+**System Fields:**
+- When `is_system_field` is `true`, the field is automatically set to `PULL_ONLY`
+- System fields are read-only in SharePoint (ID, Created, Modified, etc.)
+- Can be mapped to writable database columns for audit tracking
 
 ### 1.8 SyncCursor
 ```json
@@ -219,26 +234,70 @@ Notes:
 - If a source instance changes, the cursor can be reset or re-used depending on key stability.
 
 ## 7. Push sync workflow (Postgres -> SharePoint)
-1. Worker selects the active database instance for the sync definition.
-2. Worker queries rows updated since last cursor value.
-3. For each row, compute source_identity and source_identity_hash.
-4. Evaluate sharding rules to determine target list (unless a per-run override forces a single target).
-5. Fetch ledger entry by source_identity_hash.
-6. If no ledger entry, create SharePoint item and insert ledger.
-7. If ledger exists and target list matches, hash payload and update if changed.
-8. If target list differs, delete item from old list, create item in new list, update ledger.
-9. Store source_instance_id on each ledger write for traceability.
-10. Advance the source cursor after successful completion.
-11. Update sync_metrics with last_sync_ts and total_rows_synced increment.
+1. Create SyncRun record with status=RUNNING, run_type=PUSH
+2. Worker selects the active database instance for the sync definition
+3. Worker queries rows updated since last cursor value using cursor_column_id
+4. For each row:
+   a. Compute source_identity and source_identity_hash
+   b. Evaluate sharding rules to determine target list (unless per-run override)
+   c. Filter field mappings by sync_direction (BIDIRECTIONAL or PUSH_ONLY)
+   d. Apply type serialization (datetime→ISO8601, Decimal→float, UUID→string, date→datetime→ISO8601)
+   e. Fetch ledger entry by (sync_def_id, source_identity_hash)
+   f. Resolve SharePoint list GUID from inventory (not database UUID)
+   g. If no ledger entry:
+      - Create SharePoint item via Graph API
+      - Insert ledger entry with content_hash, provenance=PUSH
+      - Increment success_count
+      - Advance cursor ONLY on success
+   h. If ledger exists and target list matches:
+      - Compute new content_hash
+      - If hash differs, update SharePoint item
+      - Update ledger with new hash, timestamp, provenance=PUSH
+      - Increment success_count
+      - Advance cursor ONLY on success
+   i. If target list differs (sharding rule changed):
+      - Delete item from old list
+      - Create item in new list
+      - Update ledger with new list_id, provenance=PUSH
+      - Increment success_count
+      - Advance cursor ONLY on success
+   j. On any error:
+      - Increment failed_count
+      - Do NOT advance cursor (allows retry on next run)
+5. Save cursor with max successful timestamp
+6. Update SyncRun record:
+   - status = COMPLETED (if failed_count == 0) or FAILED
+   - end_time = now
+   - items_processed = success_count + failed_count
+   - items_failed = failed_count
+   - error_message (if applicable)
+
+**Critical: Cursor advancement only occurs after successful item creation/update. Failed items will be retried on the next sync run.**
 
 ## 8. Pull sync workflow (SharePoint -> Postgres)
-1. Worker calls Graph delta query on each list to fetch changes.
-2. For each change, resolve ledger entry by sp_list_id + sp_item_id.
-3. Locate source row by source_identity (or composite key columns).
-4. Apply updates to Postgres using field mappings.
-5. Update ledger hash and provenance to prevent bounce-back.
-6. Persist the latest delta link in the target cursor.
-7. Update sync_metrics with last_sync_ts and total_rows_synced increment.
+1. Create SyncRun record with status=RUNNING, run_type=INGRESS
+2. Worker fetches cursor with cursor_type=DELTA_LINK for the target list
+3. Worker calls Graph delta query to fetch changes since last delta token
+4. For each changed item:
+   a. Resolve ledger entry by (sync_def_id, sp_list_id, sp_item_id)
+   b. Filter field mappings by sync_direction (BIDIRECTIONAL or PULL_ONLY)
+   c. Extract SharePoint field values (including system fields if mapped)
+   d. If ledger entry exists:
+      - Compute new content_hash
+      - Check provenance: if last sync was PUSH, apply conflict resolution policy
+      - Locate source row by source_identity
+      - Apply updates to Postgres using filtered field mappings
+      - Update ledger with new hash, timestamp, provenance=PULL
+   e. If no ledger entry (item created in SharePoint):
+      - Insert new row in Postgres
+      - Create ledger entry with provenance=PULL
+5. Save new delta token in cursor
+6. Update SyncRun record:
+   - status = COMPLETED
+   - end_time = now
+   - items_processed = count of processed items
+
+**Loop Prevention:** Ledger provenance tracks the last sync direction. When provenance=PUSH and a pull finds a change, conflict resolution policy determines whether to apply the change or skip it.
 
 ## 9. Metrics and reconciliation
 - Capture source_table_metrics and target_list_metrics on a scheduled basis or after large runs.
@@ -250,10 +309,26 @@ Notes:
   - UNKNOWN when counts are unavailable.
 
 ## 10. Conflict resolution
-- SOURCE_WINS: Postgres is authoritative.
-- DESTINATION_WINS: SharePoint is authoritative.
-- LATEST_WINS: Compare timestamps and apply the newer version.
-- MANUAL: Mark conflicts for operator review in the UI.
+When bidirectional sync detects a conflict (both sides modified since last sync):
+
+- **SOURCE_WINS**: Postgres is authoritative, SharePoint changes are overwritten
+- **DESTINATION_WINS**: SharePoint is authoritative, Postgres changes are overwritten
+- **LATEST_WINS**: Compare last_source_ts vs SharePoint Modified timestamp, apply newer version
+- **MANUAL**: Mark conflicts for operator review in the UI (future enhancement)
+
+**Conflict Detection:**
+1. Ledger stores `provenance` (PUSH or PULL) and `last_sync_ts`
+2. Content hash comparison detects if data changed on either side
+3. If both sides changed since last sync → conflict
+4. Apply policy to resolve
+
+**Loop Prevention:**
+- After push sync, ledger.provenance = PUSH
+- If pull sync finds same item unchanged, skip (hash matches)
+- If pull sync finds item changed, check provenance:
+  - If provenance=PULL, no conflict (just a normal update from SharePoint)
+  - If provenance=PUSH, conflict detected (we pushed, but SharePoint was also modified)
+- After pull sync, ledger.provenance = PULL
 
 ## 11. Idempotency and safety
 - Ledger content hashes prevent redundant updates.
@@ -262,11 +337,147 @@ Notes:
 - Workers use deterministic mapping to avoid duplicate items.
 
 ## 12. Rate limiting and batching
-- Apply token bucket limits per tenant and per list.
-- Batch Graph operations where supported.
-- Respect Retry-After headers for 429 and 503 responses.
+- Apply token bucket limits per tenant and per list
+- Batch Graph operations where supported (batch API endpoints)
+- Respect Retry-After headers for 429 (Too Many Requests) and 503 (Service Unavailable)
+- Default batch size: 1000 rows per sync run (configurable)
+- Parallel worker pools for independent sync definitions
+- Backpressure controls for CDC pipelines to prevent overwhelm
+
+**Graph API Limits:**
+- Per-app throttling: 10,000 requests per 10 minutes per tenant
+- Per-user throttling: 10,000 requests per 10 minutes per user
+- Concurrent request limit: 4 concurrent requests per app per tenant
+- Item creation/update: 500 requests per 10 seconds per list
+
+**Mitigation:**
+- Sequential processing within a single sync definition
+- Exponential backoff on 429 responses
+- Cursor-based checkpointing allows resume after throttle
 
 ## 13. Error handling
-- Record errors in sync_events with run_id and context.
-- Retry transient errors; fail fast on schema or auth errors.
-- Provide an operator-visible error summary in the UI.
+- Record errors in SyncRun.error_message for run-level failures
+- Record per-item errors in sync_events with run_id and context (future)
+- Retry transient errors (429, 503) with exponential backoff
+- Fail fast on permanent errors (auth failures, schema mismatches)
+- Cursor advancement only on success ensures failed items retry on next run
+- Operator-visible error summary in Run History UI (/runs page)
+
+**Error Categories:**
+- **Transient**: Network timeout, rate limiting (429), service unavailable (503) → Retry
+- **Permanent**: Authentication failure (401), not found (404), schema error → Fail immediately
+- **Data**: Type conversion error, constraint violation → Log and skip item
+
+**Cursor Safety:**
+When an item fails to sync, the cursor does NOT advance past that item's timestamp. On the next sync run, the failed item will be retried.
+
+## 14. Type serialization for SharePoint API
+PostgreSQL types must be serialized to JSON-compatible types before sending to SharePoint Graph API.
+
+**Automatic Type Conversions:**
+- `datetime` → ISO 8601 string (e.g., "2025-12-21T01:59:16.169893")
+- `date` → datetime at midnight → ISO 8601 string (e.g., "2025-11-06T00:00:00")
+- `Decimal` → float (e.g., Decimal('450000.00') → 450000.0)
+- `UUID` → string (e.g., UUID('...') → "...")
+- `None` → null
+
+**Implementation:**
+```python
+def _serialize_value_for_sharepoint(self, value: Any) -> Any:
+    """Convert Python types to SharePoint/JSON-compatible types."""
+    if value is None:
+        return None
+    elif isinstance(value, datetime):
+        return value.isoformat()
+    elif isinstance(value, date):
+        return datetime.combine(value, datetime.min.time()).isoformat()
+    elif isinstance(value, Decimal):
+        return float(value)
+    elif isinstance(value, UUID):
+        return str(value)
+    else:
+        return value
+```
+
+## 15. SharePoint GUID resolution
+**Problem:** Database internal UUIDs are not SharePoint list GUIDs.
+
+**Solution:** Always resolve the actual SharePoint GUID from the inventory before making API calls.
+
+```python
+# Get SharePoint list record from inventory
+sp_list_record = db.get(SharePointList, target_obj.target_list_id)
+sp_list_guid = sp_list_record.list_id  # This is the actual SharePoint GUID
+
+# Use the GUID in API calls
+content_service.create_item(site_id, sp_list_guid, sp_fields)
+content_service.update_item(site_id, sp_list_guid, str(sp_item_id), sp_fields)
+```
+
+**Inventory Relationship:**
+- `sync_targets.target_list_id` → FK to `sharepoint_lists.id` (database UUID)
+- `sharepoint_lists.list_id` → actual SharePoint GUID
+- Always use `sharepoint_lists.list_id` for Graph API calls
+
+## 16. Operational features
+
+### 16.1 Reset Cursor
+Allows operators to reset sync cursors to force a full resync from the beginning.
+
+**Use Cases:**
+- Testing new field mappings
+- Recovering from failed sync runs
+- Backfilling data after schema changes
+- Debugging sync issues
+
+**Implementation:**
+- DELETE endpoint: `/api/v1/ops/sync/{sync_def_id}/cursors`
+- Deletes all cursors for the sync definition
+- Next sync run processes all rows (full scan)
+- UI: "Reset Cursor" button in Sync Definition detail page with confirmation dialog
+
+### 16.2 Run History Dashboard
+Complete visibility into all sync executions.
+
+**Features:**
+- Status filtering (all, completed, failed, running)
+- Real-time status updates with animated icons
+- Duration calculation and formatting
+- Success/failure item counts
+- Error message display
+- Links to sync definitions
+- Run type icons (PUSH, INGRESS, CDC)
+- Auto-refresh capability
+
+**Implementation:**
+- UI: `/runs` page
+- Backend: `/api/v1/runs` endpoint
+- Data model: `sync_runs` table
+
+### 16.3 Drift Detection
+Identifies orphaned items and count mismatches between source and target.
+
+**Drift Types:**
+- **Orphaned Items**: SharePoint items with no matching ledger entry
+- **Missing Items**: Source rows with no matching SharePoint item
+- **Count Mismatch**: Source row count ≠ target item count
+
+**Implementation:**
+- Endpoint: `/api/v1/ops/drift-report`
+- Service: `DriftService`
+- Report includes: drift type, affected items, recommended actions
+
+### 16.4 Move Logic
+Automatically moves items between SharePoint lists when sharding conditions change.
+
+**Workflow:**
+1. Detect that sharding rule now routes item to different list
+2. Delete item from old list
+3. Create item in new list (same fields, new sp_item_id)
+4. Update ledger with new sp_list_id and sp_item_id
+5. Log move operation in ledger audit trail
+
+**Safety:**
+- Transactional: if create fails, move is not recorded
+- Audit trail: ledger tracks which list item was moved from/to
+- Provenance: maintained across move operations

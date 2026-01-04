@@ -205,6 +205,32 @@ export const deleteSyncDefinition = async (id: string) => {
   return res.data;
 };
 
+// Field Mappings
+export const getFieldMappings = async (syncDefId: string) => {
+  const res = await api.get(`/field-mappings/sync-definition/${syncDefId}`);
+  return res.data;
+};
+
+export const createFieldMapping = async (syncDefId: string, data: any) => {
+  const res = await api.post(`/field-mappings/?sync_def_id=${syncDefId}`, data);
+  return res.data;
+};
+
+export const updateFieldMapping = async (mappingId: string, data: any) => {
+  const res = await api.put(`/field-mappings/${mappingId}`, data);
+  return res.data;
+};
+
+export const deleteFieldMapping = async (mappingId: string) => {
+  const res = await api.delete(`/field-mappings/${mappingId}`);
+  return res.data;
+};
+
+export const bulkUpdateFieldMappings = async (syncDefId: string, mappings: any[]) => {
+  const res = await api.post(`/field-mappings/sync-definition/${syncDefId}/bulk`, mappings);
+  return res.data;
+};
+
 export const generateDriftReport = async (data: { sync_def_id: string, check_type: string }) => {
   const res = await api.post('/ops/drift-report', data);
   return res.data;
@@ -217,6 +243,11 @@ export const triggerFailover = async (data: { new_primary_instance_id: string, o
 
 export const triggerSync = async (syncDefId: string) => {
   const res = await api.post(`/ops/sync/${syncDefId}`);
+  return res.data;
+};
+
+export const resetSyncCursors = async (syncDefId: string) => {
+  const res = await api.delete(`/ops/sync/${syncDefId}/cursors`);
   return res.data;
 };
 
