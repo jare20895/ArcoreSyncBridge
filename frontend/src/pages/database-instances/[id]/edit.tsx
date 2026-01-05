@@ -19,7 +19,8 @@ export default function EditDatabaseInstance() {
     password: '',
     role: 'PRIMARY',
     priority: 1,
-    status: 'ACTIVE'
+    status: 'ACTIVE',
+    replication_slot_name: ''
   });
   const [error, setError] = useState('');
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
@@ -50,7 +51,8 @@ export default function EditDatabaseInstance() {
           password: '', // Don't populate password for security
           role: instance.role || 'PRIMARY',
           priority: instance.priority || 1,
-          status: instance.status || 'ACTIVE'
+          status: instance.status || 'ACTIVE',
+          replication_slot_name: instance.replication_slot_name || ''
         });
       } else {
         setError('Instance not found');
@@ -115,7 +117,8 @@ export default function EditDatabaseInstance() {
         username: formData.username,
         role: formData.role,
         priority: formData.priority,
-        status: formData.status
+        status: formData.status,
+        replication_slot_name: formData.replication_slot_name || null
       };
 
       // Only include password if it was provided
@@ -310,6 +313,21 @@ export default function EditDatabaseInstance() {
               <option value="INACTIVE">INACTIVE</option>
             </select>
           </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Replication Slot Name (CDC)</label>
+          <input
+            type="text"
+            name="replication_slot_name"
+            value={formData.replication_slot_name}
+            onChange={handleChange}
+            placeholder="e.g. arcore_cdc_slot"
+            className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary placeholder-gray-400 dark:placeholder-gray-500"
+          />
+          <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-1">
+            Required for CDC syncs. Create a slot below and enter its name here.
+          </p>
         </div>
 
         <div className="flex justify-between pt-4">

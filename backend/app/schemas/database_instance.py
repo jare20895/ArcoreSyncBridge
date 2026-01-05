@@ -12,6 +12,7 @@ class DatabaseInstanceBase(BaseModel):
     role: str = Field("PRIMARY", description="Role: PRIMARY or REPLICA")
     priority: int = Field(1, description="Priority for failover")
     status: str = Field("ACTIVE", description="Status: ACTIVE, INACTIVE, ERROR")
+    replication_slot_name: Optional[str] = Field(None, description="PostgreSQL Replication Slot Name for CDC")
 
 class DatabaseInstanceCreate(DatabaseInstanceBase):
     password: Optional[str] = Field(None, description="Database Password")
@@ -27,6 +28,7 @@ class DatabaseInstanceUpdate(BaseModel):
     role: Optional[str] = None
     priority: Optional[int] = None
     status: Optional[str] = None
+    replication_slot_name: Optional[str] = None
 
 class DatabaseInstanceRead(DatabaseInstanceBase):
     id: UUID
