@@ -3,10 +3,13 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { getDatabaseInstances, updateDatabaseInstance, testDatabaseConnection, getDatabases } from '../../../services/api';
 import { ReplicationSlotManager } from '../../../components/ReplicationSlotManager';
+import { PublicationManager } from '../../../components/PublicationManager';
+import { Database, Layers, BookOpen, ArrowLeft } from 'lucide-react';
 
 export default function EditDatabaseInstance() {
   const router = useRouter();
   const { id } = router.query;
+  const [activeSection, setActiveSection] = useState('database');
   const [loading, setLoading] = useState(true);
   const [databases, setDatabases] = useState<any[]>([]);
   const [formData, setFormData] = useState({
@@ -141,213 +144,264 @@ export default function EditDatabaseInstance() {
     );
   }
 
+  const sections = [
+    { id: 'database', label: 'Connection', icon: Database },
+    { id: 'slots', label: 'Replication Slots', icon: Layers },
+    { id: 'publication', label: 'Publication', icon: BookOpen },
+  ];
+
   return (
-    <div className="p-8 max-w-2xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-light-text-primary dark:text-dark-text-primary">Edit Database Instance</h1>
-        <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary mt-1">Update connection details for this database instance</p>
-      </div>
-      {error && <div className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 p-3 rounded mb-4">{error}</div>}
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">
-            Database (Optional)
-          </label>
-          <select
-            name="database_id"
-            value={formData.database_id}
-            onChange={handleChange}
-            className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
-          >
-            <option value="">None (legacy instance)</option>
-            {databases.map(db => (
-              <option key={db.id} value={db.id}>{db.name} ({db.environment})</option>
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Sidebar */}
+      <div className="w-64 bg-white dark:bg-dark-surface border-r border-gray-200 dark:border-gray-800 flex flex-col">
+        <div className="p-6 border-b border-gray-200 dark:border-gray-800">
+             <h1 className="text-lg font-bold font-secondary text-light-text-primary dark:text-dark-text-primary truncate" title={formData.instance_label}>{formData.instance_label}</h1>
+             <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary font-mono mt-1 truncate">{id}</p>
+        </div>
+        <nav className="flex-1 p-4 space-y-1">
+            {sections.map(item => (
+                <button
+                    key={item.id}
+                    onClick={() => setActiveSection(item.id)}
+                    className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                        activeSection === item.id 
+                        ? 'bg-light-primary/10 text-light-primary dark:bg-dark-primary/20 dark:text-dark-primary' 
+                        : 'text-light-text-secondary dark:text-dark-text-secondary hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-light-text-primary dark:hover:text-dark-text-primary'
+                    }`}
+                >
+                    <item.icon size={18} />
+                    <span>{item.label}</span>
+                </button>
             ))}
-          </select>
-          <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-1">
-            Link this instance to a logical database definition.
-          </p>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Label</label>
-          <input
-            type="text"
-            name="instance_label"
-            value={formData.instance_label}
-            onChange={handleChange}
-            required
-            className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Host</label>
-            <input
-              type="text"
-              name="host"
-              value={formData.host}
-              onChange={handleChange}
-              required
-              className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Port</label>
-            <input
-              type="number"
-              name="port"
-              value={formData.port}
-              onChange={handleChange}
-              required
-              className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Database Name</label>
-            <input
-              type="text"
-              name="db_name"
-              value={formData.db_name}
-              onChange={handleChange}
-              required
-              className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Username</label>
-            <input
-              type="text"
-              name="username"
-              value={formData.username}
-              onChange={handleChange}
-              required
-              className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Password</label>
-          <input
-            type="password"
-            name="password"
-            value={formData.password}
-            onChange={handleChange}
-            placeholder="Leave blank to keep current password"
-            className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary placeholder-gray-400 dark:placeholder-gray-500"
-          />
-          <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-1">Only enter if you want to change the password</p>
-        </div>
-
-        <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-          <div className="flex items-center space-x-3">
+        </nav>
+        <div className="p-4 border-t border-gray-200 dark:border-gray-800">
             <button
-              type="button"
-              onClick={handleTestConnection}
-              disabled={testStatus === 'testing' || !formData.host || !formData.db_name || !formData.username}
-              className="flex items-center space-x-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                onClick={() => router.push('/database-instances')}
+                className="w-full flex items-center justify-center space-x-2 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
             >
-            {testStatus === 'testing' ? (
-              <>
-                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Testing Connection...</span>
-              </>
-            ) : (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span>Test Connection</span>
-              </>
-            )}
+                <ArrowLeft size={16} />
+                <span>Back to Instances</span>
             </button>
-            {!formData.password && (
-              <span className="text-xs text-light-text-secondary dark:text-dark-text-secondary italic">
-                Will use stored password
-              </span>
-            )}
-          </div>
-          {testMessage && (
-            <div className={`mt-3 p-3 rounded text-sm ${
-              testStatus === 'success'
-                ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700'
-                : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-700'
-            }`}>
-              {testMessage}
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 overflow-auto p-8">
+        <h2 className="text-2xl font-bold text-light-text-primary dark:text-dark-text-primary mb-6">
+            {sections.find(s => s.id === activeSection)?.label}
+        </h2>
+
+        {error && activeSection === 'database' && (
+            <div className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 p-3 rounded mb-4">{error}</div>
+        )}
+
+        {activeSection === 'database' && (
+            <div className="max-w-2xl bg-white dark:bg-dark-surface p-6 rounded border border-gray-200 dark:border-gray-700 shadow-sm">
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                    <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">
+                        Database (Optional)
+                    </label>
+                    <select
+                        name="database_id"
+                        value={formData.database_id}
+                        onChange={handleChange}
+                        className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
+                    >
+                        <option value="">None (legacy instance)</option>
+                        {databases.map(db => (
+                        <option key={db.id} value={db.id}>{db.name} ({db.environment})</option>
+                        ))}
+                    </select>
+                    <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-1">
+                        Link this instance to a logical database definition.
+                    </p>
+                    </div>
+
+                    <div>
+                    <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Label</label>
+                    <input
+                        type="text"
+                        name="instance_label"
+                        value={formData.instance_label}
+                        onChange={handleChange}
+                        required
+                        className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
+                    />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Host</label>
+                        <input
+                        type="text"
+                        name="host"
+                        value={formData.host}
+                        onChange={handleChange}
+                        required
+                        className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Port</label>
+                        <input
+                        type="number"
+                        name="port"
+                        value={formData.port}
+                        onChange={handleChange}
+                        required
+                        className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
+                        />
+                    </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Database Name</label>
+                        <input
+                        type="text"
+                        name="db_name"
+                        value={formData.db_name}
+                        onChange={handleChange}
+                        required
+                        className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Username</label>
+                        <input
+                        type="text"
+                        name="username"
+                        value={formData.username}
+                        onChange={handleChange}
+                        required
+                        className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
+                        />
+                    </div>
+                    </div>
+
+                    <div>
+                    <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Password</label>
+                    <input
+                        type="password"
+                        name="password"
+                        value={formData.password}
+                        onChange={handleChange}
+                        placeholder="Leave blank to keep current password"
+                        className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary placeholder-gray-400 dark:placeholder-gray-500"
+                    />
+                    <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-1">Only enter if you want to change the password</p>
+                    </div>
+
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                    <div className="flex items-center space-x-3">
+                        <button
+                        type="button"
+                        onClick={handleTestConnection}
+                        disabled={testStatus === 'testing' || !formData.host || !formData.db_name || !formData.username}
+                        className="flex items-center space-x-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                        {testStatus === 'testing' ? (
+                        <>
+                            <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span>Testing Connection...</span>
+                        </>
+                        ) : (
+                        <>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span>Test Connection</span>
+                        </>
+                        )}
+                        </button>
+                        {!formData.password && (
+                        <span className="text-xs text-light-text-secondary dark:text-dark-text-secondary italic">
+                            Will use stored password
+                        </span>
+                        )}
+                    </div>
+                    {testMessage && (
+                        <div className={`mt-3 p-3 rounded text-sm ${
+                        testStatus === 'success'
+                            ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700'
+                            : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-700'
+                        }`}>
+                        {testMessage}
+                        </div>
+                    )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Role</label>
+                        <select
+                        name="role"
+                        value={formData.role}
+                        onChange={handleChange}
+                        className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
+                        >
+                        <option value="PRIMARY">PRIMARY</option>
+                        <option value="READ_REPLICA">READ_REPLICA</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Status</label>
+                        <select
+                        name="status"
+                        value={formData.status}
+                        onChange={handleChange}
+                        className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
+                        >
+                        <option value="ACTIVE">ACTIVE</option>
+                        <option value="MAINTENANCE">MAINTENANCE</option>
+                        <option value="INACTIVE">INACTIVE</option>
+                        </select>
+                    </div>
+                    </div>
+
+                    <div>
+                    <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Replication Slot Name (CDC)</label>
+                    <input
+                        type="text"
+                        name="replication_slot_name"
+                        value={formData.replication_slot_name}
+                        onChange={handleChange}
+                        placeholder="e.g. arcore_cdc_slot"
+                        className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary placeholder-gray-400 dark:placeholder-gray-500"
+                    />
+                    <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-1">
+                        Required for CDC syncs. Create a slot in the "Replication Slots" tab and enter its name here.
+                    </p>
+                    </div>
+
+                    <div className="flex justify-end pt-4">
+                    <button
+                        type="submit"
+                        className="bg-light-primary dark:bg-dark-primary text-white py-2 px-6 rounded hover:opacity-90 transition-opacity"
+                    >
+                        Save Connection
+                    </button>
+                    </div>
+                </form>
             </div>
-          )}
-        </div>
+        )}
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Role</label>
-            <select
-              name="role"
-              value={formData.role}
-              onChange={handleChange}
-              className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
-            >
-              <option value="PRIMARY">PRIMARY</option>
-              <option value="READ_REPLICA">READ_REPLICA</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Status</label>
-            <select
-              name="status"
-              value={formData.status}
-              onChange={handleChange}
-              className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary"
-            >
-              <option value="ACTIVE">ACTIVE</option>
-              <option value="MAINTENANCE">MAINTENANCE</option>
-              <option value="INACTIVE">INACTIVE</option>
-            </select>
-          </div>
-        </div>
+        {activeSection === 'slots' && id && (
+            <div className="max-w-4xl">
+                <ReplicationSlotManager instanceId={id as string} />
+            </div>
+        )}
 
-        <div>
-          <label className="block text-sm font-medium text-light-text-primary dark:text-dark-text-primary">Replication Slot Name (CDC)</label>
-          <input
-            type="text"
-            name="replication_slot_name"
-            value={formData.replication_slot_name}
-            onChange={handleChange}
-            placeholder="e.g. arcore_cdc_slot"
-            className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary placeholder-gray-400 dark:placeholder-gray-500"
-          />
-          <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-1">
-            Required for CDC syncs. Create a slot below and enter its name here.
-          </p>
-        </div>
-
-        <div className="flex justify-between pt-4">
-          <Link
-            href="/"
-            className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-          >
-            Cancel
-          </Link>
-          <button
-            type="submit"
-            className="w-full ml-4 bg-light-primary dark:bg-dark-primary text-white py-2 px-4 rounded hover:opacity-90 transition-opacity"
-          >
-            Update Instance
-          </button>
-        </div>
-      </form>
-
-      {/* Replication Slot Manager */}
-      {id && <ReplicationSlotManager instanceId={id as string} />}
+        {activeSection === 'publication' && id && (
+            <div className="max-w-2xl">
+                <PublicationManager instanceId={id as string} />
+            </div>
+        )}
+      </div>
     </div>
   );
 }

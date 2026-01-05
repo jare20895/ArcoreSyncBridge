@@ -318,4 +318,30 @@ export const dropReplicationSlot = async (instanceId: string, slotName: string) 
   return res.data;
 };
 
+// Publications
+export const getPublicationStatus = async (instanceId: string, pubName: string = "arcore_cdc_pub") => {
+  const res = await api.get(`/replication/publications/${instanceId}`, { params: { pub_name: pubName } });
+  return res.data;
+};
+
+export const createPublication = async (instanceId: string, pubName: string = "arcore_cdc_pub", forAllTables: boolean = true, tables: string[] = []) => {
+  const res = await api.post('/replication/publications', {
+    instance_id: instanceId,
+    pub_name: pubName,
+    for_all_tables: forAllTables,
+    tables
+  });
+  return res.data;
+};
+
+export const dropPublication = async (instanceId: string, pubName: string = "arcore_cdc_pub") => {
+  const res = await api.delete('/replication/publications', {
+    data: {
+      instance_id: instanceId,
+      pub_name: pubName
+    }
+  });
+  return res.data;
+};
+
 export default api;

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel
 
 class ReplicationSlot(BaseModel):
@@ -17,3 +17,18 @@ class CreateSlotRequest(BaseModel):
 class DropSlotRequest(BaseModel):
     instance_id: str
     slot_name: str
+
+class PublicationStatus(BaseModel):
+    exists: bool
+    all_tables: bool
+    tables: List[str]
+
+class CreatePublicationRequest(BaseModel):
+    instance_id: str
+    pub_name: str = "arcore_cdc_pub"
+    for_all_tables: bool = True
+    tables: List[str] = []
+
+class DropPublicationRequest(BaseModel):
+    instance_id: str
+    pub_name: str = "arcore_cdc_pub"
