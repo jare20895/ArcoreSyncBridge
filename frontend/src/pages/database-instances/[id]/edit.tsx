@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { getDatabaseInstances, updateDatabaseInstance, testDatabaseConnection, getDatabases } from '../../../services/api';
+import { ReplicationSlotManager } from '../../../components/ReplicationSlotManager';
 
 export default function EditDatabaseInstance() {
   const router = useRouter();
@@ -326,6 +327,9 @@ export default function EditDatabaseInstance() {
           </button>
         </div>
       </form>
+
+      {/* Replication Slot Manager */}
+      {id && <ReplicationSlotManager instanceId={id as string} />}
     </div>
   );
 }

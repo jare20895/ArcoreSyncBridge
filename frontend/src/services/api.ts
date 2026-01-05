@@ -256,4 +256,66 @@ export const getSyncRuns = async () => {
   return res.data;
 };
 
+// Schedules
+export const enableSchedule = async (syncDefId: string, config: {
+  schedule_type: 'INTERVAL' | 'CRON';
+  interval_seconds?: number;
+  cron_expression?: string;
+  timezone?: string;
+}) => {
+  const res = await api.post(`/schedules/${syncDefId}/enable`, config);
+  return res.data;
+};
+
+export const disableSchedule = async (syncDefId: string) => {
+  const res = await api.post(`/schedules/${syncDefId}/disable`);
+  return res.data;
+};
+
+export const deleteSchedule = async (syncDefId: string) => {
+  const res = await api.delete(`/schedules/${syncDefId}`);
+  return res.data;
+};
+
+export const getScheduleAudit = async (syncDefId: string, limit: number = 50) => {
+  const res = await api.get(`/schedules/${syncDefId}/audit`, { params: { limit } });
+  return res.data;
+};
+
+// CDC (placeholder - will be implemented in Epic 5)
+export const enableCDC = async (syncDefId: string) => {
+  const res = await api.post(`/cdc/${syncDefId}/enable-cdc`);
+  return res.data;
+};
+
+export const disableCDC = async (syncDefId: string) => {
+  const res = await api.post(`/cdc/${syncDefId}/disable-cdc`);
+  return res.data;
+};
+
+// Replication Slots
+export const getReplicationSlots = async (instanceId: string) => {
+  const res = await api.get(`/replication/slots/${instanceId}`);
+  return res.data;
+};
+
+export const createReplicationSlot = async (instanceId: string, slotName: string, plugin: string = 'pgoutput') => {
+  const res = await api.post('/replication/slots', {
+    instance_id: instanceId,
+    slot_name: slotName,
+    plugin
+  });
+  return res.data;
+};
+
+export const dropReplicationSlot = async (instanceId: string, slotName: string) => {
+  const res = await api.delete('/replication/slots', {
+    data: {
+      instance_id: instanceId,
+      slot_name: slotName
+    }
+  });
+  return res.data;
+};
+
 export default api;
