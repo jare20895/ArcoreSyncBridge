@@ -148,20 +148,44 @@ class Synchronizer:
             if fm.is_key and fm.source_column_name:
                 pg_pk_col = fm.source_column_name
 
+        # Batch Lookup Optimization: Fetch all ledger entries for this batch
+        sp_item_ids = []
+        for change in changes:
+            sid = change.get("id")
+            if sid:
+                try:
+                    sp_item_ids.append(int(sid))
+                except ValueError:
+                    pass
+        
+        ledger_map = {}
+        if sp_item_ids:
+            # Chunking the IN clause if too large (Postgres limit is generous but good practice)
+            # Assuming batch size from caller is reasonable (e.g. 50-100), we can just do one query.
+            # If batch is 2000+, we might want to chunk, but let's assume get_list_changes handles paging.
+            stmt = select(SyncLedgerEntry).where(
+                SyncLedgerEntry.sync_def_id == sync_def.id,
+                SyncLedgerEntry.sp_list_id == list_id,
+                SyncLedgerEntry.sp_item_id.in_(sp_item_ids)
+            )
+            entries = self.db.execute(stmt).scalars().all()
+            ledger_map = {entry.sp_item_id: entry for entry in entries}
+
         for change in changes:
             sp_item_id = change.get("id") # String usually
             if not sp_item_id:
                 continue
 
+            try:
+                sp_item_id_int = int(sp_item_id)
+            except ValueError:
+                continue
+
             # Determine Logic: Deleted vs Changed
             reason = change.get("reason")
             
-            # Find in Ledger
-            ledger_entry = self.db.execute(select(SyncLedgerEntry).where(
-                SyncLedgerEntry.sync_def_id == sync_def.id,
-                SyncLedgerEntry.sp_list_id == list_id,
-                SyncLedgerEntry.sp_item_id == int(sp_item_id)
-            )).scalars().first()
+            # Find in Ledger (Memory Lookup)
+            ledger_entry = ledger_map.get(sp_item_id_int)
 
             if reason == "deleted":
                 if ledger_entry:

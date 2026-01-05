@@ -30,8 +30,10 @@ class CDCConsumer:
         self.decoder = PgOutputDecoder()
         self.content_service_factory = content_service_factory
         
-        # Cache for SyncDefs
+        # Cache
         self._sync_def_cache = {} # (instance_id, schema, table) -> SyncDefinition
+        self._target_cache = {} # (sync_def_id, target_list_id) -> SyncTarget
+        self._connection_cache = {} # connection_id -> SharePointConnection
         self._last_cache_update = 0
         
         self._setup_group()
@@ -111,6 +113,10 @@ class CDCConsumer:
         return self._sync_def_cache.get((instance_id, schema, table))
 
     def _refresh_cache(self):
+        # Clear caches
+        self._target_cache = {}
+        self._connection_cache = {}
+
         # 1. Load SyncDefinitions with explicit SyncSource
         stmt = select(SyncDefinition, SyncSource).join(SyncSource).where(
             SyncDefinition.cdc_enabled == True,
@@ -202,23 +208,36 @@ class CDCConsumer:
 
         # Resolve Context (Connection/Site)
         # Fetch Target Object to get context
-        target = self.db.get(SyncTarget, (sync_def.id, UUID(target_list_id)))
+        # Check Cache
+        target_key = (sync_def.id, UUID(target_list_id))
+        target = self._target_cache.get(target_key)
+        
         if not target:
-             # Try default?
-             # Just use fallback
-             target = self.db.execute(select(SyncTarget).where(
-                 SyncTarget.sync_def_id == sync_def.id,
-                 SyncTarget.is_default == True
-             )).scalars().first()
-             if not target: 
-                 return # Cannot sync
+            target = self.db.get(SyncTarget, target_key)
+            if not target:
+                 # Try default?
+                 # Just use fallback
+                 target = self.db.execute(select(SyncTarget).where(
+                     SyncTarget.sync_def_id == sync_def.id,
+                     SyncTarget.is_default == True
+                 )).scalars().first()
+                 if not target: 
+                     return # Cannot sync
+            self._target_cache[target_key] = target
         
         conn_id = target.sharepoint_connection_id
         site_id = target.site_id or os.environ.get("SHAREPOINT_SITE_ID", "")
         
+        conn = None
         if conn_id:
-            conn = self.db.get(SharePointConnection, conn_id)
+            conn = self._connection_cache.get(conn_id)
+            if not conn:
+                conn = self.db.get(SharePointConnection, conn_id)
+                if conn:
+                    self._connection_cache[conn_id] = conn
         else:
+            # Fallback connection (cache 'active'?)
+            # Just query for now, or cache "default"
             conn = self.db.query(SharePointConnection).filter(SharePointConnection.status == "ACTIVE").first()
             
         if not conn:
