@@ -1,5 +1,6 @@
 from typing import List, Optional, Dict
 from uuid import UUID
+from datetime import datetime
 from pydantic import BaseModel, Field
 
 # Field Mapping
@@ -87,6 +88,19 @@ class SyncDefinitionBase(BaseModel):
     cursor_strategy: str = "UPDATED_AT"
     cursor_column_id: Optional[UUID] = None
     sharding_policy: Dict = {}
+    
+    cdc_enabled: bool = False
+    is_paused: bool = False
+    rate_limit_ms: int = 0
+
+    # Scheduling Configuration
+    schedule_enabled: bool = False
+    schedule_type: Optional[str] = None  # INTERVAL, CRON
+    schedule_interval_seconds: Optional[int] = None
+    schedule_cron_expression: Optional[str] = None
+    schedule_timezone: str = "UTC"
+    last_scheduled_run: Optional[datetime] = None
+    next_scheduled_run: Optional[datetime] = None
 
 class SyncDefinitionCreate(SyncDefinitionBase):
     sources: List[SyncSourceCreate] = []
@@ -102,6 +116,13 @@ class SyncDefinitionUpdate(BaseModel):
     target_strategy: Optional[str] = None
     cursor_strategy: Optional[str] = None
     sharding_policy: Optional[Dict] = None
+
+    # Scheduling Configuration
+    schedule_enabled: Optional[bool] = None
+    schedule_type: Optional[str] = None
+    schedule_interval_seconds: Optional[int] = None
+    schedule_cron_expression: Optional[str] = None
+    schedule_timezone: Optional[str] = None
 
 class SyncDefinitionRead(SyncDefinitionBase):
     id: UUID
