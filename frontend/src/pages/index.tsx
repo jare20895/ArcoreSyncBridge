@@ -1,24 +1,45 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { getDatabaseInstances, getConnections } from '../services/api';
-import { Activity, Database, AlertTriangle, Layers } from 'lucide-react';
+import { getDatabaseInstances, getConnections, getSyncDefinitions } from '../services/api';
+import { Activity, Database, AlertTriangle, Layers, BarChart, GitBranch, Grid, Network } from 'lucide-react';
+import TabNavigation from '../components/tabs/TabNavigation';
+import MermaidDiagram from '../components/diagrams/MermaidDiagram';
+import AllSyncsGridView from '../components/diagrams/AllSyncsGridView';
+import InteractiveFlowDiagram from '../components/diagrams/InteractiveFlowDiagram';
+import { generateAllSyncsMermaid } from '../lib/generateAllSyncsMermaid';
 
 export default function Dashboard() {
   const [dbs, setDbs] = useState([]);
   const [conns, setConns] = useState([]);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [diagramView, setDiagramView] = useState<'single' | 'grid' | 'interactive'>('single');
+  const [syncDefs, setSyncDefs] = useState([]);
 
   useEffect(() => {
     getDatabaseInstances().then(setDbs).catch(console.error);
     getConnections().then(setConns).catch(console.error);
+    getSyncDefinitions().then(setSyncDefs).catch(console.error);
   }, []);
+
+  const tabs = [
+    { id: 'overview', label: 'Overview', icon: BarChart },
+    { id: 'diagrams', label: 'Diagrams', icon: GitBranch },
+  ];
 
   return (
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-secondary font-bold text-light-text-primary dark:text-dark-text-primary">Overview</h1>
-        <p className="text-light-text-secondary dark:text-dark-text-secondary mt-1">System status and key performance indicators.</p>
+        <h1 className="text-3xl font-secondary font-bold text-light-text-primary dark:text-dark-text-primary">Dashboard</h1>
+        <p className="text-light-text-secondary dark:text-dark-text-secondary mt-1">System status and visualizations.</p>
       </div>
+
+      {/* Tab Navigation */}
+      <TabNavigation tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
+
+      {/* Overview Tab */}
+      {activeTab === 'overview' && (
+      <div className="space-y-8">
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -139,6 +160,122 @@ export default function Dashboard() {
         </div>
 
       </div>
+      </div>
+      )}
+
+      {/* Diagrams Tab */}
+      {activeTab === 'diagrams' && (
+        <div className="space-y-6">
+          {/* Debug Info */}
+          {syncDefs.some((def: any) => (!def.source_table_name && !def.source_table_name_resolved) || !def.target_list_name) && (
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded p-4">
+              <h4 className="font-bold text-yellow-800 dark:text-yellow-200 mb-2">⚠️ Warning: Incomplete Sync Definitions</h4>
+              <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-2">
+                Some sync definitions are missing source or target information:
+              </p>
+              <div className="text-xs font-mono space-y-1 max-h-40 overflow-y-auto">
+                {syncDefs.filter((def: any) => (!def.source_table_name && !def.source_table_name_resolved) || !def.target_list_name).map((def: any) => (
+                  <div key={def.id} className="text-yellow-700 dark:text-yellow-300">
+                    • {def.name} (ID: {def.id.substring(0, 8)}...):
+                    {!def.source_table_name && !def.source_table_name_resolved && <span className="ml-2 text-red-600 dark:text-red-400">Missing source table (source_table_id may be invalid)</span>}
+                    {!def.target_list_name && <span className="ml-2 text-red-600 dark:text-red-400">Missing target_list_name (target_list_id may be null or invalid)</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* View Selector */}
+          <div className="bg-white dark:bg-dark-surface p-4 rounded border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center space-x-4">
+              <span className="font-medium text-sm text-light-text-primary dark:text-dark-text-primary">
+                View Mode:
+              </span>
+              <button
+                onClick={() => setDiagramView('single')}
+                className={`flex items-center space-x-2 px-4 py-2 rounded transition-colors ${
+                  diagramView === 'single'
+                    ? 'bg-light-primary dark:bg-dark-primary text-white'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
+                }`}
+              >
+                <GitBranch size={16} />
+                <span>Single Diagram</span>
+              </button>
+              <button
+                onClick={() => setDiagramView('grid')}
+                className={`flex items-center space-x-2 px-4 py-2 rounded transition-colors ${
+                  diagramView === 'grid'
+                    ? 'bg-light-primary dark:bg-dark-primary text-white'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
+                }`}
+              >
+                <Grid size={16} />
+                <span>Grid View</span>
+              </button>
+              <button
+                onClick={() => setDiagramView('interactive')}
+                className={`flex items-center space-x-2 px-4 py-2 rounded transition-colors ${
+                  diagramView === 'interactive'
+                    ? 'bg-light-primary dark:bg-dark-primary text-white'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
+                }`}
+              >
+                <Network size={16} />
+                <span>Interactive</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Option A: Single Large Diagram */}
+          {diagramView === 'single' && (
+            <div className="bg-white dark:bg-dark-surface p-6 rounded border border-gray-200 dark:border-gray-700 shadow-sm">
+              <h3 className="text-lg font-bold mb-4 text-light-text-primary dark:text-dark-text-primary">
+                All Sync Definitions
+              </h3>
+              <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary mb-4">
+                Top-to-bottom flow showing all sync definitions from source databases to target lists
+              </p>
+              <div className="overflow-x-auto">
+                <MermaidDiagram
+                  chart={generateAllSyncsMermaid(syncDefs)}
+                  className="min-h-[500px]"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Option B: Grid View */}
+          {diagramView === 'grid' && (
+            <div>
+              <div className="mb-4">
+                <h3 className="text-lg font-bold text-light-text-primary dark:text-dark-text-primary">
+                  Grid View
+                </h3>
+                <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
+                  Click any card to navigate to the sync definition detail page
+                </p>
+              </div>
+              <AllSyncsGridView syncDefinitions={syncDefs} />
+            </div>
+          )}
+
+          {/* Option C: Interactive React Flow */}
+          {diagramView === 'interactive' && (
+            <div>
+              <div className="mb-4">
+                <h3 className="text-lg font-bold text-light-text-primary dark:text-dark-text-primary">
+                  Interactive Diagram
+                </h3>
+                <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
+                  Interactive flow diagram with filtering, zoom, and pan capabilities
+                </p>
+              </div>
+              <InteractiveFlowDiagram syncDefinitions={syncDefs} />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

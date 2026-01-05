@@ -9,12 +9,17 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@reactflow/background": "^11.3.14",
+    "@reactflow/controls": "^11.2.14",
+    "@reactflow/minimap": "^11.7.14",
     "axios": "^1.6.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.562.0",
+    "mermaid": "^10.9.5",
     "next": "14.0.0",
     "react": "^18",
     "react-dom": "^18",
+    "reactflow": "^11.11.4",
     "swr": "^2.2.0",
     "tailwind-merge": "^3.4.0"
   },

@@ -12,10 +12,12 @@ import {
     getSharePointColumns,
     resetSyncCursors
 } from '../../services/api';
-import { AlertTriangle, CheckCircle, RefreshCw, ArrowRightLeft, ArrowRight, Play, Settings, Database, Layers, Activity, List as ListIcon, Edit2, X, Save, RotateCcw, Zap } from 'lucide-react';
+import { AlertTriangle, CheckCircle, RefreshCw, ArrowRightLeft, ArrowRight, Play, Settings, Database, Layers, Activity, List as ListIcon, Edit2, X, Save, RotateCcw, Zap, GitBranch, Download } from 'lucide-react';
 import FieldMappingEditor from '../../components/FieldMappingEditor';
 import ScheduleConfig from '../../components/ScheduleConfig';
 import CDCToggle from '../../components/CDCToggle';
+import MermaidDiagram from '../../components/diagrams/MermaidDiagram';
+import { generateSyncFlowMermaid } from '../../lib/generateSyncMermaid';
 
 export default function SyncDefinitionDetail() {
   const router = useRouter();
@@ -200,6 +202,7 @@ export default function SyncDefinitionDetail() {
       { id: 'overview', label: 'Overview', icon: Settings },
       { id: 'automation', label: 'Automation', icon: Zap },
       { id: 'mappings', label: 'Field Mappings', icon: ListIcon },
+      { id: 'diagram', label: 'Diagram', icon: GitBranch },
       { id: 'targets', label: 'Targets & Routing', icon: Database },
       { id: 'sharding', label: 'Sharding Rules', icon: Layers },
       { id: 'ops', label: 'Operations & Drift', icon: Activity },
@@ -357,6 +360,71 @@ export default function SyncDefinitionDetail() {
                     onSave={handleSaveMappings}
                     readonly={false}
                 />
+            )}
+
+            {activeSection === 'diagram' && (
+                <div className="space-y-6 max-w-6xl">
+                    <div className="bg-white dark:bg-dark-surface p-6 rounded border border-gray-200 dark:border-gray-700 shadow-sm">
+                        <div className="flex justify-between items-center mb-4">
+                            <div>
+                                <h3 className="text-lg font-bold text-light-text-primary dark:text-dark-text-primary">
+                                    Sync Flow Visualization
+                                </h3>
+                                <p className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
+                                    Visual representation of data flow from source to target
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    const svg = document.querySelector('.mermaid-container svg');
+                                    if (svg) {
+                                        const serializer = new XMLSerializer();
+                                        const svgBlob = new Blob([serializer.serializeToString(svg)], {type: 'image/svg+xml'});
+                                        const url = URL.createObjectURL(svgBlob);
+                                        const link = document.createElement('a');
+                                        link.href = url;
+                                        link.download = `${def.name}-diagram.svg`;
+                                        link.click();
+                                        URL.revokeObjectURL(url);
+                                    }
+                                }}
+                                className="flex items-center space-x-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                            >
+                                <Download size={16} />
+                                <span>Export SVG</span>
+                            </button>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <MermaidDiagram
+                                chart={generateSyncFlowMermaid(def)}
+                                className="min-h-[400px]"
+                            />
+                        </div>
+
+                        <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded text-xs space-y-2">
+                            <div className="font-semibold text-gray-700 dark:text-gray-300">Legend:</div>
+                            <div className="flex flex-wrap items-center gap-4">
+                                <div className="flex items-center space-x-2">
+                                    <div className="w-4 h-4 bg-yellow-400 border-2 border-orange-600 rounded"></div>
+                                    <span className="text-gray-600 dark:text-gray-400">Key Field</span>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <span className="text-gray-600 dark:text-gray-400">→</span>
+                                    <span className="text-gray-600 dark:text-gray-400">Push Only</span>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <span className="text-gray-600 dark:text-gray-400">←</span>
+                                    <span className="text-gray-600 dark:text-gray-400">Pull Only</span>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <span className="text-gray-600 dark:text-gray-400">↔</span>
+                                    <span className="text-gray-600 dark:text-gray-400">Bidirectional</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
 
             {activeSection === 'targets' && (
