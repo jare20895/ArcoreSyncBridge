@@ -30,7 +30,7 @@ class CDCService:
         self.redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
         self.redis = redis.Redis.from_url(self.redis_url)
         self.stream_key = "arcore:cdc:events"
-        self.max_stream_len = 10000 # Backpressure limit
+        self.max_stream_len = 100000 # Backpressure limit (increased)
 
         # Use existing client logic to resolve credentials/dsn
         self.client = DatabaseClient(self.instance)
@@ -72,13 +72,6 @@ class CDCService:
                     if self.stop_event.is_set():
                         raise StopIteration # Graceful exit from consume_stream
 
-                    # Check Backpressure
-                    while self.redis.xlen(self.stream_key) > self.max_stream_len:
-                        logger.warning("Backpressure: Stream full. Pausing ingestion.")
-                        time.sleep(1)
-                        if self.stop_event.is_set():
-                            raise StopIteration
-
                     # Process Message
                     if msg.payload:
                         self._handle_message(msg)
@@ -103,8 +96,9 @@ class CDCService:
             "payload": msg.payload, # Bytes
             "instance_id": str(self.instance_id)
         }
-        
-        self.redis.xadd(self.stream_key, event_data)
+
+        # Add to stream with automatic trimming to prevent unbounded growth
+        self.redis.xadd(self.stream_key, event_data, maxlen=100000, approximate=True)
         logger.debug(f"Queued WAL message: {len(msg.payload)} bytes")
 
     def _checkpoint(self, lsn: int):

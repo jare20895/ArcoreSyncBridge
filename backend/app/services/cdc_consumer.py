@@ -111,7 +111,7 @@ class CDCConsumer:
         return self._sync_def_cache.get((instance_id, schema, table))
 
     def _refresh_cache(self):
-        # Load all active sync definitions with their primary source
+        # 1. Load SyncDefinitions with explicit SyncSource
         stmt = select(SyncDefinition, SyncSource).join(SyncSource).where(
             SyncDefinition.cdc_enabled == True,
             SyncSource.role == "PRIMARY"
@@ -123,6 +123,61 @@ class CDCConsumer:
             key = (str(source.database_instance_id), sync_def.source_schema or "public", sync_def.source_table_name)
             self._sync_def_cache[key] = sync_def
         
+        # 2. Load SyncDefinitions WITHOUT SyncSource (fallback mode)
+        # We need to find definitions with cdc_enabled=True where ID is NOT in the previous set (or just query all and filter)
+        # Easier to just query all cdc_enabled and process
+        
+        # Let's query ALL cdc_enabled definitions
+        all_defs = self.db.execute(select(SyncDefinition).where(SyncDefinition.cdc_enabled == True)).scalars().all()
+        
+        from app.models.inventory import DatabaseTable, DatabaseInstance
+        
+        for sync_def in all_defs:
+            # Check if already cached (via SyncSource)
+            # This is tricky because we cache by KEY, not ID. 
+            # But we can check if we processed it. 
+            # Actually, simpler approach: Just recalculate the key for everything.
+            
+            # Try to find SyncSource
+            source = next((s for s in sync_def.sources if s.role == "PRIMARY"), None)
+            instance_id = None
+            
+            if source:
+                instance_id = source.database_instance_id
+            elif sync_def.source_table_id:
+                # Fallback: Resolve via Inventory
+                table = self.db.get(DatabaseTable, sync_def.source_table_id)
+                if table:
+                    # Find active instance for database
+                    # Prefer lowest priority number
+                    instance = self.db.execute(
+                        select(DatabaseInstance)
+                        .where(
+                            DatabaseInstance.database_id == table.database_id,
+                            DatabaseInstance.status == "ACTIVE"
+                        )
+                        .order_by(DatabaseInstance.priority)
+                    ).scalars().first()
+                    
+                    if instance:
+                        instance_id = instance.id
+            
+            if instance_id:
+                # Determine table/schema name
+                # If sync_def has them, use them. Else fetch from table inventory if available.
+                schema_name = sync_def.source_schema
+                table_name = sync_def.source_table_name
+                
+                if (not schema_name or not table_name) and sync_def.source_table_id:
+                     table = self.db.get(DatabaseTable, sync_def.source_table_id)
+                     if table:
+                         schema_name = schema_name or table.schema_name
+                         table_name = table_name or table.table_name
+                
+                if schema_name and table_name:
+                    key = (str(instance_id), schema_name, table_name)
+                    self._sync_def_cache[key] = sync_def
+
         self._last_cache_update = time.time()
 
     def _apply_change(self, sync_def: SyncDefinition, op_type: str, row_data: dict, instance_id_str: str):
