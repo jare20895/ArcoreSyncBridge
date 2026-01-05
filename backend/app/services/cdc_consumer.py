@@ -130,7 +130,8 @@ class CDCConsumer:
         # Let's query ALL cdc_enabled definitions
         all_defs = self.db.execute(select(SyncDefinition).where(SyncDefinition.cdc_enabled == True)).scalars().all()
         
-        from app.models.inventory import DatabaseTable, DatabaseInstance
+        from app.models.inventory import DatabaseTable
+        from app.models.core import DatabaseInstance
         
         for sync_def in all_defs:
             # Check if already cached (via SyncSource)
