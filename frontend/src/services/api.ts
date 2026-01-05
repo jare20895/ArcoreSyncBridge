@@ -324,6 +324,11 @@ export const getPublicationStatus = async (instanceId: string, pubName: string =
   return res.data;
 };
 
+export const getPublicationAvailableTables = async (instanceId: string, schema: string = "public") => {
+  const res = await api.get(`/replication/publications/${instanceId}/tables`, { params: { schema } });
+  return res.data;
+};
+
 export const createPublication = async (instanceId: string, pubName: string = "arcore_cdc_pub", forAllTables: boolean = true, tables: string[] = []) => {
   const res = await api.post('/replication/publications', {
     instance_id: instanceId,

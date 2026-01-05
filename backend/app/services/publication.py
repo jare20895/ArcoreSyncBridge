@@ -3,6 +3,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 from app.models.core import DatabaseInstance
 from app.services.database import DatabaseClient
+from app.services.introspection import PostgresIntrospector, build_dsn
 
 class PublicationService:
     def __init__(self, db: Session):
@@ -13,6 +14,15 @@ class PublicationService:
         if not instance:
             raise ValueError("Database instance not found")
         return instance
+
+    def get_available_tables(self, instance_id: UUID, schema: str = "public") -> List[str]:
+        instance = self._get_instance(instance_id)
+        dsn = build_dsn(instance)
+        introspector = PostgresIntrospector(dsn)
+        
+        inventory = introspector.get_table_inventory(schema)
+        # Return list of "schema.table"
+        return [f"{t['schema_name']}.{t['table_name']}" for t in inventory if t['table_type'] == 'BASE']
 
     def get_publication_status(self, instance_id: UUID, pub_name: str = "arcore_cdc_pub") -> Dict[str, Any]:
         instance = self._get_instance(instance_id)

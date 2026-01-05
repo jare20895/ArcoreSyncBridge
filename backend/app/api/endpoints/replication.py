@@ -61,6 +61,18 @@ def get_publication_status(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/publications/{instance_id}/tables", response_model=List[str])
+def get_publication_available_tables(
+    instance_id: UUID,
+    schema: str = "public",
+    db: Session = Depends(get_db)
+):
+    service = PublicationService(db)
+    try:
+        return service.get_available_tables(instance_id, schema)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/publications", status_code=status.HTTP_201_CREATED)
 def create_publication(
     request: CreatePublicationRequest,
