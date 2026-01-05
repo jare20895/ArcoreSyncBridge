@@ -10,6 +10,9 @@ msal
 requests
 redis
 celery
+celery-sqlalchemy-scheduler>=0.3.0
+croniter>=2.0.0
+pytz
 simpleeval
 pydantic-settings
 tenacity

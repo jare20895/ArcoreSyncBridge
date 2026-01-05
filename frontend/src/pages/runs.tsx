@@ -39,6 +39,7 @@ export default function RunsPage() {
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Run ID</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sync Definition</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Trigger</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Start Time</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
@@ -56,6 +57,16 @@ export default function RunsPage() {
                                 <td className="px-6 py-4 whitespace-nowrap text-xs font-mono text-gray-500">{run.id.substring(0, 8)}...</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 font-medium">{run.sync_def_id.substring(0, 8)}...</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-gray-600 dark:text-gray-400">{run.run_type}</td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                        run.trigger_type === 'MANUAL' ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300' :
+                                        run.trigger_type === 'SCHEDULED' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
+                                        run.trigger_type === 'CDC' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' :
+                                        'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                                    }`}>
+                                        {run.trigger_type || 'MANUAL'}
+                                    </span>
+                                </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                                         run.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
@@ -79,7 +90,7 @@ export default function RunsPage() {
                     })}
                     {runs.length === 0 && !loading && (
                         <tr>
-                            <td colSpan={7} className="px-6 py-12 text-center text-gray-500">No run history available.</td>
+                            <td colSpan={8} className="px-6 py-12 text-center text-gray-500">No run history available.</td>
                         </tr>
                     )}
                 </tbody>

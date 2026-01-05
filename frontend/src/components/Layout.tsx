@@ -150,10 +150,8 @@ export default function Layout({ children }: LayoutProps) {
                 )}
                 {activeTab?.name === 'Sync Definitions' && (
                     <>
-                        <li><Link href="/sync-definitions" className="block px-3 py-2 rounded bg-light-primary/5 text-light-primary dark:bg-dark-primary/20 dark:text-dark-primary font-medium">Definitions List</Link></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Targets</a></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Field Mappings</a></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Sharding Rules</a></li>
+                        <li><Link href="/sync-definitions" className="block px-3 py-2 rounded bg-light-primary/5 text-light-primary dark:bg-dark-primary/20 dark:text-dark-primary font-medium">All Definitions</Link></li>
+                        <li><Link href="/sync-definitions/new" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Create New</Link></li>
                     </>
                 )}
                 {activeTab?.name === 'Data Sources' && (

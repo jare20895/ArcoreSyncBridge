@@ -96,3 +96,26 @@ This checklist tracks delivery by phase. Items can be moved forward as scope evo
 - [x] **SharePoint GUID Resolution**: Fixed UUID vs GUID bug in push sync worker.
 - [ ] **Rich Type Support**: Enhanced handling for Lookup (ID vs Value), Person (Email vs Name), and Choice (Text[]) (Deferred to Phase 7).
 - [ ] **Data Transformation**: Transform rule execution (Upper, Lower, Trim, Regex) in mapping layer (Deferred to Phase 7).
+
+## Phase 7: Scheduled Jobs & Automation 🚧 IN PROGRESS
+- [ ] **Database Schema Extensions**: Add scheduling fields to SyncDefinition, create CeleryPeriodicTask and ScheduledSyncAudit tables
+- [ ] **Celery Beat Scheduler**: Integrate celery-sqlalchemy-scheduler for database-backed dynamic schedules
+- [ ] **Schedule Service**: Implement ScheduleService with interval and cron expression support
+- [ ] **Scheduled Sync Task**: Create run_scheduled_sync task with Redis-based concurrent execution prevention
+- [ ] **Schedule CRUD API**: Build /api/schedules endpoints for enable/disable/delete operations
+- [ ] **Schedule Audit Service**: Track scheduled run history, skips, and failures
+- [ ] **Schedule UI Component**: ScheduleConfig component with interval/cron toggle and next-run display
+- [ ] **Docker Infrastructure**: Add celery_worker, celery_beat, and cdc_consumer services to docker-compose
+- [ ] **CDC Manager Service**: Manage CDC threads per database instance with start/stop controls
+- [ ] **CDC Consumer Worker**: Standalone worker process for real-time database change consumption
+- [ ] **CDC Startup Integration**: Add lifespan handler to auto-start CDC for enabled sync definitions
+- [ ] **CDC Control API**: Build /api/cdc endpoints for enable-cdc/disable-cdc operations
+- [ ] **CDC Toggle UI**: CDCToggle component for real-time sync enable/disable
+- [ ] **Alert System**: SyncAlert model with consecutive failure detection and in-app notifications
+- [ ] **Alert Service**: AlertService for failure threshold monitoring and alert generation
+- [ ] **Alert API**: Build /api/alerts endpoints for active alerts and resolution
+- [ ] **Alert Banner UI**: AlertBanner component with severity-based color coding
+- [ ] **Run History Enhancement**: Add trigger_type column (MANUAL, SCHEDULED, CDC) with badge display
+- [ ] **Replication Slot Management**: Enhance /replication endpoints for slot assignment to instances
+- [ ] **Integration Testing**: End-to-end tests for scheduled sync, CDC flow, and concurrent prevention
+- [ ] **Documentation**: User guides for scheduling, CDC setup, and troubleshooting

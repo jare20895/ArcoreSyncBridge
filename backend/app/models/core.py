@@ -119,7 +119,16 @@ class SyncDefinition(Base):
     cdc_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     is_paused: Mapped[bool] = mapped_column(Boolean, default=False)
     rate_limit_ms: Mapped[int] = mapped_column(Integer, default=0)
-    
+
+    # Scheduling Configuration
+    schedule_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    schedule_type: Mapped[Optional[str]] = mapped_column(String, nullable=True) # INTERVAL, CRON
+    schedule_interval_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    schedule_cron_expression: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    schedule_timezone: Mapped[str] = mapped_column(String, default="UTC")
+    last_scheduled_run: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_scheduled_run: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
     sources: Mapped[List["SyncSource"]] = relationship(
         back_populates="sync_definition",
         cascade="all, delete-orphan",
@@ -272,3 +281,80 @@ class SyncRun(Base):
     items_processed: Mapped[int] = mapped_column(Integer, default=0)
     items_failed: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    # Trigger tracking
+    trigger_type: Mapped[str] = mapped_column(String, default="MANUAL") # MANUAL, SCHEDULED, CDC
+    celery_task_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+
+class CeleryPeriodicTask(Base):
+    """
+    Celery Beat schedule storage (compatible with celery-sqlalchemy-scheduler)
+    """
+    __tablename__ = "celery_periodic_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, unique=True)  # e.g., "sync_def_{uuid}_scheduled"
+    task: Mapped[str] = mapped_column(String)  # "app.worker.tasks.run_scheduled_sync"
+
+    # Schedule Config (one of these)
+    interval_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    crontab_minute: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    crontab_hour: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    crontab_day_of_week: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    crontab_day_of_month: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    crontab_month_of_year: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    # Task Arguments
+    args: Mapped[list] = mapped_column(JSONB, default=list)  # [sync_def_id]
+    kwargs: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+    # Metadata
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    total_run_count: Mapped[int] = mapped_column(Integer, default=0)
+    date_changed: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Reference back to sync definition
+    sync_def_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("sync_definitions.id", ondelete="CASCADE"),
+        nullable=True
+    )
+
+
+class ScheduledSyncAudit(Base):
+    """
+    Tracks scheduled sync execution for monitoring and alerting
+    """
+    __tablename__ = "scheduled_sync_audit"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id", ondelete="CASCADE"))
+    periodic_task_id: Mapped[int] = mapped_column(Integer)
+
+    scheduled_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # When it should run
+    actual_start_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completion_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    status: Mapped[str] = mapped_column(String)  # SCHEDULED, RUNNING, COMPLETED, FAILED, SKIPPED
+    skip_reason: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # "Previous run still active"
+    sync_run_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)  # Link to SyncRun
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SyncAlert(Base):
+    """
+    In-app alerts for sync issues
+    """
+    __tablename__ = "sync_alerts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id", ondelete="CASCADE"))
+    alert_type: Mapped[str] = mapped_column(String)  # CONSECUTIVE_FAILURES, CDC_LAG, SCHEDULE_SKIP
+    severity: Mapped[str] = mapped_column(String)  # WARNING, ERROR, CRITICAL
+    message: Mapped[str] = mapped_column(String)
+    alert_metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
+    is_resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

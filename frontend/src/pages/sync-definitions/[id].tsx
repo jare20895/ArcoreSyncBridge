@@ -12,8 +12,10 @@ import {
     getSharePointColumns,
     resetSyncCursors
 } from '../../services/api';
-import { AlertTriangle, CheckCircle, RefreshCw, ArrowRightLeft, ArrowRight, Play, Settings, Database, Layers, Activity, List as ListIcon, Edit2, X, Save, RotateCcw } from 'lucide-react';
+import { AlertTriangle, CheckCircle, RefreshCw, ArrowRightLeft, ArrowRight, Play, Settings, Database, Layers, Activity, List as ListIcon, Edit2, X, Save, RotateCcw, Zap } from 'lucide-react';
 import FieldMappingEditor from '../../components/FieldMappingEditor';
+import ScheduleConfig from '../../components/ScheduleConfig';
+import CDCToggle from '../../components/CDCToggle';
 
 export default function SyncDefinitionDetail() {
   const router = useRouter();
@@ -196,6 +198,7 @@ export default function SyncDefinitionDetail() {
 
   const sections = [
       { id: 'overview', label: 'Overview', icon: Settings },
+      { id: 'automation', label: 'Automation', icon: Zap },
       { id: 'mappings', label: 'Field Mappings', icon: ListIcon },
       { id: 'targets', label: 'Targets & Routing', icon: Database },
       { id: 'sharding', label: 'Sharding Rules', icon: Layers },
@@ -322,6 +325,27 @@ export default function SyncDefinitionDetail() {
                             </dl>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {activeSection === 'automation' && (
+                <div className="space-y-6 max-w-5xl">
+                    <ScheduleConfig
+                        syncDefId={id as string}
+                        currentConfig={def}
+                        onSave={() => {
+                            // Reload the sync definition to get updated schedule info
+                            getSyncDefinition(id as string).then(setDef).catch(console.error);
+                        }}
+                    />
+                    <CDCToggle
+                        syncDefId={id as string}
+                        cdcEnabled={def.cdc_enabled}
+                        onToggle={() => {
+                            // Reload the sync definition to get updated CDC status
+                            getSyncDefinition(id as string).then(setDef).catch(console.error);
+                        }}
+                    />
                 </div>
             )}
 

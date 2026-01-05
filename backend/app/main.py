@@ -1,13 +1,15 @@
 import time
 import uuid
 import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqladmin import Admin
 
-from app.api.endpoints import database_instances, sharepoint_connections, provisioning, sharepoint_discovery, sync_definitions, moves, ops, replication, runs, applications, databases, data_sources, data_targets, field_mappings
-from app.db.session import engine
+from app.api.endpoints import database_instances, sharepoint_connections, provisioning, sharepoint_discovery, sync_definitions, moves, ops, replication, runs, applications, databases, data_sources, data_targets, field_mappings, schedules, cdc
+from app.db.session import engine, SessionLocal
+from app.services.cdc_manager import CDCManager
 from app.admin import (
     DatabaseInstanceAdmin,
     SharePointConnectionAdmin,
@@ -27,7 +29,40 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Arcore SyncBridge", version="0.1.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for FastAPI app.
+    Handles startup and shutdown of CDC services.
+    """
+    # Startup: Initialize CDC Manager and start all enabled CDC
+    logger.info("Application startup: Initializing CDC Manager...")
+    db = SessionLocal()
+    try:
+        cdc_manager = CDCManager(db)
+        started_count = cdc_manager.start_all_enabled_cdc()
+        logger.info(f"Started CDC for {started_count} database instances")
+        # Store in app state for dependency injection
+        app.state.cdc_manager = cdc_manager
+    except Exception as e:
+        logger.error(f"Failed to start CDC on startup: {e}")
+        app.state.cdc_manager = None
+
+    yield  # Application is running
+
+    # Shutdown: Stop all CDC threads
+    logger.info("Application shutdown: Stopping CDC Manager...")
+    if hasattr(app.state, 'cdc_manager') and app.state.cdc_manager:
+        try:
+            app.state.cdc_manager.stop_all()
+            logger.info("CDC Manager stopped successfully")
+        except Exception as e:
+            logger.error(f"Error stopping CDC Manager: {e}")
+
+    db.close()
+
+
+app = FastAPI(title="Arcore SyncBridge", version="0.1.0", lifespan=lifespan)
 
 # Setup SQLAdmin
 admin = Admin(app, engine)
@@ -82,6 +117,8 @@ app.include_router(moves.router, prefix="/api/v1/moves", tags=["moves"])
 app.include_router(ops.router, prefix="/api/v1/ops", tags=["ops"])
 app.include_router(replication.router, prefix="/api/v1/replication", tags=["replication"])
 app.include_router(runs.router, prefix="/api/v1/runs", tags=["runs"])
+app.include_router(schedules.router, prefix="/api/v1/schedules", tags=["schedules"])
+app.include_router(cdc.router, prefix="/api/v1/cdc", tags=["cdc"])
 
 @app.get("/health")
 async def health_check():

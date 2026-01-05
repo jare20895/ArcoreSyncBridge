@@ -60,9 +60,79 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8055
+      - NEXT_PUBLIC_API_URL=http://arcore:8055
     depends_on:
       - backend
+
+  celery_worker:
+    build: ./backend
+    restart: always
+    command: celery -A app.worker.celery_app worker --loglevel=info --queues=sync_queue,default
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    environment:
+      - POSTGRES_USER=arcore
+      - POSTGRES_PASSWORD=arcore_password
+      - POSTGRES_DB=arcore_syncbridge
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://arcore:arcore_password@db:5432/arcore_syncbridge
+      - SECRET_KEY=dev_secret_key
+      - ALGORITHM=HS256
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  celery_beat:
+    build: ./backend
+    restart: always
+    command: celery -A app.worker.celery_app beat --loglevel=info
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    environment:
+      - POSTGRES_USER=arcore
+      - POSTGRES_PASSWORD=arcore_password
+      - POSTGRES_DB=arcore_syncbridge
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://arcore:arcore_password@db:5432/arcore_syncbridge
+      - SECRET_KEY=dev_secret_key
+      - ALGORITHM=HS256
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  cdc_consumer:
+    build: ./backend
+    restart: always
+    command: python -m app.worker.cdc_consumer_worker
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    environment:
+      - POSTGRES_USER=arcore
+      - POSTGRES_PASSWORD=arcore_password
+      - POSTGRES_DB=arcore_syncbridge
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://arcore:arcore_password@db:5432/arcore_syncbridge
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
 volumes:
   postgres_data:

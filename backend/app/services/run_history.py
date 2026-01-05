@@ -8,13 +8,21 @@ class RunHistoryService:
     def __init__(self, db: Session):
         self.db = db
 
-    def start_run(self, sync_def_id: UUID, run_type: str) -> SyncRun:
+    def start_run(
+        self,
+        sync_def_id: UUID,
+        run_type: str,
+        trigger_type: str = "MANUAL",
+        celery_task_id: Optional[str] = None
+    ) -> SyncRun:
         run = SyncRun(
             id=uuid4(),
             sync_def_id=sync_def_id,
             run_type=run_type,
             status="RUNNING",
-            start_time=datetime.utcnow()
+            start_time=datetime.utcnow(),
+            trigger_type=trigger_type,
+            celery_task_id=celery_task_id
         )
         self.db.add(run)
         self.db.commit()

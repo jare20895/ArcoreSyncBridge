@@ -20,7 +20,13 @@ celery_app.conf.update(
     task_routes={
         "app.worker.tasks.run_push_sync": {"queue": "sync_queue"},
         "app.worker.tasks.run_ingress_sync": {"queue": "sync_queue"},
+        "app.worker.tasks.run_scheduled_sync": {"queue": "sync_queue"},
         # Future tasks
         # "app.worker.tasks.generate_drift_report": {"queue": "reports_queue"},
-    }
+    },
+    # Celery Beat Configuration
+    beat_scheduler="celery_sqlalchemy_scheduler.schedulers:DatabaseScheduler",
+    beat_dburi=os.environ.get("DATABASE_URL", "postgresql://arcore:arcore_password@db:5432/arcore_syncbridge"),
+    beat_schedule_filename="/tmp/celerybeat-schedule",  # Fallback for file-based scheduler
+    beat_schedule={},  # Disable default tasks (backend_cleanup) to avoid zoneinfo compatibility issues
 )
