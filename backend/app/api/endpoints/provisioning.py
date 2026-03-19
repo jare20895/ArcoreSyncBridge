@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from uuid import UUID
+from app.api.responses import success_response
 from app.api.endpoints.database_instances import get_db
+from app.core.security import ADMIN_ROLES, OPERATOR_ROLES, require_roles
 from app.models.core import SharePointConnection
+from app.schemas.api import ApiResponse
 from app.schemas.provisioning import ProvisionRequest, ProvisionResponse
 from app.services.graph import GraphClient
 from app.services.provisioner import SharePointProvisioner
@@ -12,13 +15,15 @@ import jwt
 
 router = APIRouter()
 
-@router.post("/list", response_model=ProvisionResponse)
+@router.post("/list", response_model=ApiResponse[ProvisionResponse])
 def provision_sharepoint_list(
-    request: ProvisionRequest,
+    payload: ProvisionRequest,
+    request: Request,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     # 1. Fetch Connection Details
-    conn = db.get(SharePointConnection, request.connection_id)
+    conn = db.get(SharePointConnection, payload.connection_id)
     if not conn:
         raise HTTPException(status_code=404, detail="SharePoint connection not found")
 
@@ -43,16 +48,16 @@ def provision_sharepoint_list(
         provisioner = SharePointProvisioner(graph)
         
         # Resolve Site ID first
-        site_info = provisioner.get_site(request.hostname, request.site_path)
+        site_info = provisioner.get_site(payload.hostname, payload.site_path)
         site_id = site_info["id"]
 
         result = provisioner.provision_table_to_list(
             site_id=site_id,
-            pg_columns=request.columns,
-            list_display_name=request.list_name,
-            description=request.description,
-            skip_columns=request.skip_columns,
-            column_configurations=request.column_configurations
+            pg_columns=payload.columns,
+            list_display_name=payload.list_name,
+            description=payload.description,
+            skip_columns=payload.skip_columns,
+            column_configurations=payload.column_configurations
         )
 
         # 4. Upsert Inventory Record
@@ -70,8 +75,8 @@ def provision_sharepoint_list(
             site_rec = SharePointSite(
                 connection_id=conn.id,
                 tenant_id=conn.tenant_id,
-                hostname=site_info.get("siteCollection", {}).get("hostname") or request.hostname,
-                site_path=request.site_path, # Approximate
+                hostname=site_info.get("siteCollection", {}).get("hostname") or payload.hostname,
+                site_path=payload.site_path, # Approximate
                 site_id=site_id,
                 web_url=site_info.get("webUrl", ""),
                 status="ACTIVE"
@@ -85,16 +90,16 @@ def provision_sharepoint_list(
         
         if list_rec:
             list_rec.display_name = result["list"]["displayName"]
-            list_rec.description = request.description
+            list_rec.description = payload.description
             list_rec.is_provisioned = True
             list_rec.last_provisioned_at = datetime.utcnow()
-            list_rec.source_table_id = request.tableId if hasattr(request, 'tableId') else None # Wait, request doesn't have tableId in schema yet?
+            list_rec.source_table_id = payload.tableId if hasattr(payload, 'tableId') else None # Wait, request doesn't have tableId in schema yet?
         else:
             list_rec = SharePointList(
                 site_id=site_rec.id,
                 list_id=list_guid,
                 display_name=result["list"]["displayName"],
-                description=request.description,
+                description=payload.description,
                 template="genericList",
                 is_provisioned=True,
                 last_provisioned_at=datetime.utcnow(),
@@ -103,23 +108,27 @@ def provision_sharepoint_list(
             db.add(list_rec)
         
         # We need tableId in ProvisionRequest to link it
-        if hasattr(request, 'table_id') and request.table_id:
-             list_rec.source_table_id = request.table_id
+        if hasattr(payload, 'table_id') and payload.table_id:
+             list_rec.source_table_id = payload.table_id
 
         db.commit()
         
-        return result
+        return success_response(request, result)
 
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Provisioning failed: {str(e)}")
 
 
-@router.get("/connections")
-def list_connections(db: Session = Depends(get_db)):
+@router.get("/connections", response_model=ApiResponse[list[dict]])
+def list_connections(
+    request: Request,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    db: Session = Depends(get_db),
+):
     """List all SharePoint connections."""
     connections = db.query(SharePointConnection).all()
-    return [
+    return success_response(request, [
         {
             "id": str(conn.id),
             "tenant_id": conn.tenant_id,
@@ -127,11 +136,16 @@ def list_connections(db: Session = Depends(get_db)):
             "status": conn.status
         }
         for conn in connections
-    ]
+    ])
 
 
-@router.get("/debug-token/{connection_id}")
-def debug_token(connection_id: UUID, db: Session = Depends(get_db)):
+@router.get("/debug-token/{connection_id}", response_model=ApiResponse[dict])
+def debug_token(
+    connection_id: UUID,
+    request: Request,
+    _: None = Depends(require_roles(*ADMIN_ROLES)),
+    db: Session = Depends(get_db),
+):
     """Debug endpoint to check token permissions."""
     if not settings.ENABLE_TOKEN_DEBUG_ENDPOINT:
         raise HTTPException(status_code=404, detail="Not found")
@@ -156,7 +170,7 @@ def debug_token(connection_id: UUID, db: Session = Depends(get_db)):
         # Decode token (without verification for debugging)
         decoded = jwt.decode(token, options={"verify_signature": False})
 
-        return {
+        return success_response(request, {
             "tenant_id": conn.tenant_id,
             "client_id": conn.client_id,
             "token_roles": decoded.get("roles", []),
@@ -165,6 +179,6 @@ def debug_token(connection_id: UUID, db: Session = Depends(get_db)):
             "audience": decoded.get("aud"),
             "expires": decoded.get("exp"),
             "token_claim_keys": sorted(decoded.keys())
-        }
+        })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to debug token: {str(e)}")

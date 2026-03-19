@@ -1,8 +1,11 @@
 from typing import List
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from app.api.responses import success_response
 from sqlalchemy.orm import Session
 from app.api.endpoints.database_instances import get_db
+from app.core.security import OPERATOR_ROLES, require_roles
+from app.schemas.api import ApiResponse, MessageResponse
 from app.schemas.replication import (
     ReplicationSlot, CreateSlotRequest, DropSlotRequest,
     PublicationStatus, CreatePublicationRequest, DropPublicationRequest
@@ -12,92 +15,103 @@ from app.services.publication import PublicationService
 
 router = APIRouter()
 
-@router.get("/slots/{instance_id}", response_model=List[ReplicationSlot])
+@router.get("/slots/{instance_id}", response_model=ApiResponse[List[ReplicationSlot]])
 def list_replication_slots(
     instance_id: UUID,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     service = ReplicationService(db)
     try:
-        return service.list_slots(instance_id)
+        return success_response(request, service.list_slots(instance_id))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/slots", status_code=status.HTTP_201_CREATED)
+@router.post("/slots", response_model=ApiResponse[MessageResponse], status_code=status.HTTP_201_CREATED)
 def create_replication_slot(
-    request: CreateSlotRequest,
+    payload: CreateSlotRequest,
+    request: Request,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     service = ReplicationService(db)
     try:
-        service.create_slot(UUID(request.instance_id), request.slot_name, request.plugin)
-        return {"message": f"Slot {request.slot_name} created successfully"}
+        service.create_slot(UUID(payload.instance_id), payload.slot_name, payload.plugin)
+        return success_response(request, {"message": f"Slot {payload.slot_name} created successfully"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/slots", status_code=status.HTTP_200_OK)
+@router.delete("/slots", response_model=ApiResponse[MessageResponse], status_code=status.HTTP_200_OK)
 def drop_replication_slot(
-    request: DropSlotRequest,
+    payload: DropSlotRequest,
+    request: Request,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     service = ReplicationService(db)
     try:
-        service.drop_slot(UUID(request.instance_id), request.slot_name)
-        return {"message": f"Slot {request.slot_name} dropped successfully"}
+        service.drop_slot(UUID(payload.instance_id), payload.slot_name)
+        return success_response(request, {"message": f"Slot {payload.slot_name} dropped successfully"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 # Publication Endpoints
 
-@router.get("/publications/{instance_id}", response_model=PublicationStatus)
+@router.get("/publications/{instance_id}", response_model=ApiResponse[PublicationStatus])
 def get_publication_status(
     instance_id: UUID,
+    request: Request,
     pub_name: str = "arcore_cdc_pub",
     db: Session = Depends(get_db)
 ):
     service = PublicationService(db)
     try:
-        return service.get_publication_status(instance_id, pub_name)
+        return success_response(request, service.get_publication_status(instance_id, pub_name))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/publications/{instance_id}/tables", response_model=List[str])
+@router.get("/publications/{instance_id}/tables", response_model=ApiResponse[List[str]])
 def get_publication_available_tables(
     instance_id: UUID,
+    request: Request,
     schema: str = "public",
     db: Session = Depends(get_db)
 ):
     service = PublicationService(db)
     try:
-        return service.get_available_tables(instance_id, schema)
+        return success_response(request, service.get_available_tables(instance_id, schema))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/publications", status_code=status.HTTP_201_CREATED)
+@router.post("/publications", response_model=ApiResponse[MessageResponse], status_code=status.HTTP_201_CREATED)
 def create_publication(
-    request: CreatePublicationRequest,
+    payload: CreatePublicationRequest,
+    request: Request,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     service = PublicationService(db)
     try:
         service.create_publication(
-            UUID(request.instance_id),
-            request.pub_name,
-            request.for_all_tables,
-            request.tables
+            UUID(payload.instance_id),
+            payload.pub_name,
+            payload.for_all_tables,
+            payload.tables
         )
-        return {"message": f"Publication {request.pub_name} created successfully"}
+        return success_response(request, {"message": f"Publication {payload.pub_name} created successfully"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/publications", status_code=status.HTTP_200_OK)
+@router.delete("/publications", response_model=ApiResponse[MessageResponse], status_code=status.HTTP_200_OK)
 def drop_publication(
-    request: DropPublicationRequest,
+    payload: DropPublicationRequest,
+    request: Request,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     service = PublicationService(db)
     try:
-        service.drop_publication(UUID(request.instance_id), request.pub_name)
-        return {"message": f"Publication {request.pub_name} dropped successfully"}
+        service.drop_publication(UUID(payload.instance_id), payload.pub_name)
+        return success_response(request, {"message": f"Publication {payload.pub_name} dropped successfully"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -1,9 +1,11 @@
 from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import select, desc
+from app.api.responses import success_response
 from app.api.endpoints.database_instances import get_db
+from app.schemas.api import ApiResponse
 from app.models.core import SyncRun
 from pydantic import BaseModel
 from datetime import datetime
@@ -24,8 +26,9 @@ class SyncRunRead(BaseModel):
     class Config:
         from_attributes = True
 
-@router.get("/", response_model=List[SyncRunRead])
+@router.get("/", response_model=ApiResponse[List[SyncRunRead]])
 def list_runs(
+    request: Request,
     skip: int = 0,
     limit: int = 50,
     sync_def_id: Optional[UUID] = None,
@@ -38,4 +41,4 @@ def list_runs(
         
     query = query.offset(skip).limit(limit)
     result = db.execute(query)
-    return result.scalars().all()
+    return success_response(request, result.scalars().all())

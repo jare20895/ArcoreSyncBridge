@@ -1,7 +1,7 @@
 """
 Health and monitoring endpoints for system diagnostics
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text, select
 import logging
@@ -11,8 +11,11 @@ from pydantic import BaseModel
 from uuid import UUID
 
 from app.api.endpoints.database_instances import get_db
+from app.api.responses import success_response
 from app.core.config import settings
+from app.core.security import ADMIN_ROLES, OPERATOR_ROLES, require_roles
 from app.models.core import DatabaseInstance
+from app.schemas.api import ApiResponse
 from app.services.database import DatabaseClient
 import psycopg2
 
@@ -29,8 +32,8 @@ class VacuumTableRequest(BaseModel):
     table: str
     full: bool = False
 
-@router.get("/cdc-health")
-def get_cdc_health(db: Session = Depends(get_db)):
+@router.get("/cdc-health", response_model=ApiResponse[Dict[str, Any]])
+def get_cdc_health(request: Request, db: Session = Depends(get_db)):
     """
     Get CDC replication slot health metrics including:
     - Slot status (active/inactive)
@@ -181,7 +184,7 @@ def get_cdc_health(db: Session = Depends(get_db)):
             status = "warning" if status == "healthy" else status
             issues.append(f"{conn_stats[1]} active connections on System DB")
 
-        return {
+        return success_response(request, {
             "status": status,
             "issues": issues,
             "timestamp": datetime.utcnow().isoformat(),
@@ -199,13 +202,13 @@ def get_cdc_health(db: Session = Depends(get_db)):
                 "idle": conn_stats[2] if conn_stats else 0,
                 "waiting": conn_stats[3] if conn_stats else 0
             }
-        }
+        })
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get CDC health: {str(e)}")
 
-@router.get("/database-stats")
-def get_database_stats(db: Session = Depends(get_db)):
+@router.get("/database-stats", response_model=ApiResponse[Dict[str, Any]])
+def get_database_stats(request: Request, db: Session = Depends(get_db)):
     """Get database performance statistics"""
     try:
         dsn = f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
@@ -255,23 +258,28 @@ def get_database_stats(db: Session = Depends(get_db)):
 
             conn.close()
 
-            return {
+            return success_response(request, {
                 "tables": table_data,
                 "cache_hit_ratio": float(cache_stats[2]) if cache_stats[2] else 100.0,
                 "heap_blocks_read": cache_stats[0],
                 "heap_blocks_hit": cache_stats[1]
-            }
+            })
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get database stats: {str(e)}")
 
-@router.post("/drop-slot")
-def drop_replication_slot(request: DropSlotRequest, db: Session = Depends(get_db)):
+@router.post("/drop-slot", response_model=ApiResponse[Dict[str, Any]])
+def drop_replication_slot(
+    payload: DropSlotRequest,
+    request: Request,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    db: Session = Depends(get_db),
+):
     """Drop a replication slot"""
     try:
-        if request.instance_id:
+        if payload.instance_id:
             # Drop from specific instance using DatabaseClient/Replication logic
-            instance = db.get(DatabaseInstance, UUID(request.instance_id))
+            instance = db.get(DatabaseInstance, UUID(payload.instance_id))
             if not instance:
                 raise HTTPException(status_code=404, detail="Database instance not found")
             
@@ -279,13 +287,13 @@ def drop_replication_slot(request: DropSlotRequest, db: Session = Depends(get_db
             
             # Check existence
             try:
-                rows = client.execute_raw("SELECT slot_name, active_pid FROM pg_replication_slots WHERE slot_name = %s", (request.slot_name,))
+                rows = client.execute_raw("SELECT slot_name, active_pid FROM pg_replication_slots WHERE slot_name = %s", (payload.slot_name,))
                 if not rows:
-                    raise HTTPException(status_code=404, detail=f"Replication slot '{request.slot_name}' not found on instance")
+                    raise HTTPException(status_code=404, detail=f"Replication slot '{payload.slot_name}' not found on instance")
                 
                 slot_name, active_pid = rows[0]
                 
-                if active_pid and request.force:
+                if active_pid and payload.force:
                     client.execute_raw(f"SELECT pg_terminate_backend({active_pid})", autocommit=True)
                     # Wait/Retry logic could be added here similar to below, but keeping it simple for now or copying it
                 
@@ -294,9 +302,9 @@ def drop_replication_slot(request: DropSlotRequest, db: Session = Depends(get_db
             except Exception as e:
                 error_str = str(e)
                 if "is active" in error_str:
-                     raise HTTPException(
-                        status_code=409,
-                        detail=f"Replication slot '{request.slot_name}' is active. Use force=true to terminate the connection first."
+                        raise HTTPException(
+                            status_code=409,
+                            detail=f"Replication slot '{payload.slot_name}' is active. Use force=true to terminate the connection first."
                     )
                 raise HTTPException(status_code=500, detail=f"Failed to drop slot: {str(e)}")
 
@@ -310,16 +318,16 @@ def drop_replication_slot(request: DropSlotRequest, db: Session = Depends(get_db
                 # Check if slot exists and get active pid
                 cur.execute(
                     "SELECT slot_name, active_pid FROM pg_replication_slots WHERE slot_name = %s",
-                    (request.slot_name,)
+                    (payload.slot_name,)
                 )
                 row = cur.fetchone()
                 if not row:
-                    raise HTTPException(status_code=404, detail=f"Replication slot '{request.slot_name}' not found")
+                    raise HTTPException(status_code=404, detail=f"Replication slot '{payload.slot_name}' not found")
 
                 slot_name, active_pid = row
 
                 # If slot is active and force=True, terminate the backend
-                if active_pid and request.force:
+                if active_pid and payload.force:
                     cur.execute(f"SELECT pg_terminate_backend({active_pid})")
                     # Wait for the backend to terminate and retry a few times
                     import time
@@ -327,7 +335,7 @@ def drop_replication_slot(request: DropSlotRequest, db: Session = Depends(get_db
                         time.sleep(0.5)
                         cur.execute(
                             "SELECT active_pid FROM pg_replication_slots WHERE slot_name = %s",
-                            (request.slot_name,)
+                            (payload.slot_name,)
                         )
                         check_row = cur.fetchone()
                         if check_row and not check_row[0]:
@@ -342,30 +350,35 @@ def drop_replication_slot(request: DropSlotRequest, db: Session = Depends(get_db
                     if "is active" in error_str:
                         raise HTTPException(
                             status_code=409,
-                            detail=f"Replication slot '{request.slot_name}' is active. Use force=true to terminate the connection first."
+                            detail=f"Replication slot '{payload.slot_name}' is active. Use force=true to terminate the connection first."
                         )
                     raise
 
             conn.close()
 
-        return {
+        return success_response(request, {
             "success": True,
-            "message": f"Successfully dropped replication slot: {request.slot_name}"
-        }
+            "message": f"Successfully dropped replication slot: {payload.slot_name}"
+        })
 
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to drop replication slot: {str(e)}")
 
-@router.post("/vacuum-table")
-def vacuum_table(request: VacuumTableRequest, db: Session = Depends(get_db)):
+@router.post("/vacuum-table", response_model=ApiResponse[Dict[str, Any]])
+def vacuum_table(
+    payload: VacuumTableRequest,
+    request: Request,
+    _: None = Depends(require_roles(*ADMIN_ROLES)),
+    db: Session = Depends(get_db),
+):
     """Run VACUUM on a table"""
     try:
         # Validate schema and table name to prevent SQL injection
-        if not request.schema.replace('_', '').isalnum():
+        if not payload.schema.replace('_', '').isalnum():
             raise HTTPException(status_code=400, detail="Invalid schema name")
-        if not request.table.replace('_', '').isalnum():
+        if not payload.table.replace('_', '').isalnum():
             raise HTTPException(status_code=400, detail="Invalid table name")
 
         dsn = f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
@@ -376,21 +389,21 @@ def vacuum_table(request: VacuumTableRequest, db: Session = Depends(get_db)):
             # Check if table exists
             cur.execute(
                 "SELECT tablename FROM pg_tables WHERE schemaname = %s AND tablename = %s",
-                (request.schema, request.table)
+                (payload.schema, payload.table)
             )
             if not cur.fetchone():
-                raise HTTPException(status_code=404, detail=f"Table '{request.schema}.{request.table}' not found")
+                raise HTTPException(status_code=404, detail=f"Table '{payload.schema}.{payload.table}' not found")
 
             # Run VACUUM
-            vacuum_cmd = f"VACUUM {'FULL' if request.full else ''} {request.schema}.{request.table}"
+            vacuum_cmd = f"VACUUM {'FULL' if payload.full else ''} {payload.schema}.{payload.table}"
             cur.execute(vacuum_cmd)
 
         conn.close()
 
-        return {
+        return success_response(request, {
             "success": True,
-            "message": f"Successfully ran {'VACUUM FULL' if request.full else 'VACUUM'} on {request.schema}.{request.table}"
-        }
+            "message": f"Successfully ran {'VACUUM FULL' if payload.full else 'VACUUM'} on {payload.schema}.{payload.table}"
+        })
 
     except HTTPException:
         raise
