@@ -11,6 +11,7 @@ from app.models.core import SyncDefinition, SyncCursor, SharePointConnection, Sy
 from app.services.sharepoint_content import SharePointContentService
 from app.services.graph import GraphClient
 from app.services.database import DatabaseClient
+from app.services.secrets import resolve_sharepoint_client_secret
 import os
 
 class Synchronizer:
@@ -53,7 +54,7 @@ class Synchronizer:
         if not conn:
              raise ValueError("No active SharePoint connection found")
 
-        real_secret = os.environ.get("AZURE_CLIENT_SECRET", "")
+        real_secret = resolve_sharepoint_client_secret(conn)
         # Use target site_id or env fallback
         site_id = target.site_id or os.environ.get("SHAREPOINT_SITE_ID", "")
         

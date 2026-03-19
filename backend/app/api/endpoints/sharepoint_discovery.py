@@ -9,6 +9,7 @@ from app.models.inventory import SharePointSite, SharePointList
 from app.services.graph import GraphClient
 from app.services.provisioner import SharePointProvisioner
 from app.services.sharepoint_discovery import SharePointDiscoveryService
+from app.services.secrets import resolve_sharepoint_client_secret
 
 router = APIRouter()
 
@@ -17,11 +18,7 @@ def get_graph_client(connection_id: UUID, db: Session) -> GraphClient:
     if not conn:
         raise HTTPException(status_code=404, detail="SharePoint connection not found")
     
-    # TODO: Refactor secret retrieval to be secure and shared
-    import os
-    secret = conn.client_secret or os.environ.get("AZURE_CLIENT_SECRET", "")
-    if not secret and conn.client_id == os.environ.get("AZURE_CLIENT_ID"):
-         secret = os.environ.get("AZURE_CLIENT_SECRET", "")
+    secret = resolve_sharepoint_client_secret(conn)
     
     try:
         return GraphClient(

@@ -131,10 +131,10 @@ def test_connection(
         raise HTTPException(status_code=404, detail="Database instance not found")
 
     # Check if we have all required credentials
-    if not db_instance.db_name or not db_instance.username:
+    if not db_instance.db_name or not db_instance.username or not db_instance.password:
         return ConnectionTestResult(
             success=False,
-            message="Missing database name or username in stored instance"
+            message="Missing database name, username, or password in stored instance"
         )
 
     import psycopg2
@@ -145,7 +145,7 @@ def test_connection(
             port=db_instance.port,
             database=db_instance.db_name,
             user=db_instance.username,
-            password=db_instance.password or "",
+            password=db_instance.password,
             connect_timeout=5
         )
         conn.close()

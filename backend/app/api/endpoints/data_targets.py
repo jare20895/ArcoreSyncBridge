@@ -16,17 +16,14 @@ from app.schemas.catalog import (
     SharePointColumnRead,
 )
 from app.services.graph import GraphClient
+from app.services.secrets import resolve_sharepoint_client_secret
 from app.services.sharepoint_discovery import SharePointDiscoveryService
 
 router = APIRouter()
 
 
 def _get_graph_client(connection: SharePointConnection) -> GraphClient:
-    secret = connection.client_secret or os.environ.get("AZURE_CLIENT_SECRET", "")
-    if not secret and connection.client_id == os.environ.get("AZURE_CLIENT_ID"):
-        secret = os.environ.get("AZURE_CLIENT_SECRET", "")
-    if not secret:
-        raise HTTPException(status_code=400, detail="SharePoint connection secret is missing")
+    secret = resolve_sharepoint_client_secret(connection)
     return GraphClient(
         tenant_id=connection.tenant_id,
         client_id=connection.client_id,

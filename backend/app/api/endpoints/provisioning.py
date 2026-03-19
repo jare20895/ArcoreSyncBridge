@@ -6,8 +6,9 @@ from app.models.core import SharePointConnection
 from app.schemas.provisioning import ProvisionRequest, ProvisionResponse
 from app.services.graph import GraphClient
 from app.services.provisioner import SharePointProvisioner
+from app.services.secrets import resolve_sharepoint_client_secret
+from app.core.config import settings
 import jwt
-import os
 
 router = APIRouter()
 
@@ -25,13 +26,7 @@ def provision_sharepoint_list(
          raise HTTPException(status_code=400, detail="SharePoint connection is not active")
 
     # 2. Initialize Graph Client
-    # NOTE: In a real app, secrets should be decrypted.
-    import os
-    secret = conn.client_secret or os.environ.get("AZURE_CLIENT_SECRET", "")
-    if not secret and conn.client_id == os.environ.get("AZURE_CLIENT_ID"):
-        secret = os.environ.get("AZURE_CLIENT_SECRET", "")
-    if not secret:
-        raise HTTPException(status_code=400, detail="SharePoint connection secret is missing")
+    secret = resolve_sharepoint_client_secret(conn)
 
     try:
         graph = GraphClient(
@@ -138,13 +133,14 @@ def list_connections(db: Session = Depends(get_db)):
 @router.get("/debug-token/{connection_id}")
 def debug_token(connection_id: UUID, db: Session = Depends(get_db)):
     """Debug endpoint to check token permissions."""
+    if not settings.ENABLE_TOKEN_DEBUG_ENDPOINT:
+        raise HTTPException(status_code=404, detail="Not found")
+
     conn = db.get(SharePointConnection, connection_id)
     if not conn:
         raise HTTPException(status_code=404, detail="SharePoint connection not found")
 
-    secret = conn.client_secret or os.environ.get("AZURE_CLIENT_SECRET", "")
-    if not secret and conn.client_id == os.environ.get("AZURE_CLIENT_ID"):
-        secret = os.environ.get("AZURE_CLIENT_SECRET", "")
+    secret = resolve_sharepoint_client_secret(conn)
 
     try:
         graph = GraphClient(
@@ -168,7 +164,7 @@ def debug_token(connection_id: UUID, db: Session = Depends(get_db)):
             "app_id": decoded.get("appid"),
             "audience": decoded.get("aud"),
             "expires": decoded.get("exp"),
-            "full_decoded": decoded
+            "token_claim_keys": sorted(decoded.keys())
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to debug token: {str(e)}")

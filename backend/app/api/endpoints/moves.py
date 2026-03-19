@@ -8,6 +8,7 @@ from app.services.mover import MoveManager
 from app.services.sharepoint_content import SharePointContentService
 from app.services.state import LedgerService
 from app.services.graph import GraphClient
+from app.services.secrets import resolve_sharepoint_client_secret
 import os
 
 router = APIRouter()
@@ -59,7 +60,7 @@ def move_sharepoint_item(
 
     # 4. Initialize Services
     try:
-        client_secret = os.environ.get("AZURE_CLIENT_SECRET", "")
+        client_secret = resolve_sharepoint_client_secret(conn)
         
         graph_client = GraphClient(
             tenant_id=conn.tenant_id,

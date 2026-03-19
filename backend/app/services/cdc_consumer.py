@@ -13,6 +13,7 @@ from app.models.core import SyncDefinition, SyncSource, SyncLedgerEntry, SyncTar
 from app.services.pgoutput import PgOutputDecoder
 from app.services.sharepoint_content import SharePointContentService
 from app.services.graph import GraphClient
+from app.services.secrets import resolve_sharepoint_client_secret
 from app.models.core import SharePointConnection
 from app.services.sharding import ShardingEvaluator
 import hashlib
@@ -246,7 +247,7 @@ class CDCConsumer:
         if self.content_service_factory:
             content_service = self.content_service_factory(conn, site_id, target_list_id)
         else:
-            client_secret = os.environ.get("AZURE_CLIENT_SECRET", "")
+            client_secret = resolve_sharepoint_client_secret(conn)
             graph = GraphClient(conn.tenant_id, conn.client_id, client_secret, conn.authority_host)
             content_service = SharePointContentService(graph)
 

@@ -16,6 +16,7 @@ from app.models.inventory import SyncMetric, DatabaseTable, Database
 from app.services.database import DatabaseClient
 from app.services.graph import GraphClient
 from app.services.sharepoint_content import SharePointContentService
+from app.services.secrets import resolve_sharepoint_client_secret
 
 logger = logging.getLogger(__name__)
 
@@ -247,7 +248,7 @@ class ReconciliationService:
                 return None
 
             # Get credentials
-            real_secret = os.environ.get("AZURE_CLIENT_SECRET", "")
+            real_secret = resolve_sharepoint_client_secret(conn)
             if not site_id:
                 site_id = os.environ.get("SHAREPOINT_SITE_ID", "")
 

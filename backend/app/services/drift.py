@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.models.core import SyncDefinition, SyncLedgerEntry, SyncTarget, SharePointConnection
 from app.services.sharepoint_content import SharePointContentService
 from app.services.graph import GraphClient
+from app.services.secrets import resolve_sharepoint_client_secret
 from app.schemas.ops import DriftReportResponse, DriftItem
 import os
 
@@ -37,7 +38,7 @@ class DriftService:
                  # Skip or error? Error better.
                  raise ValueError("No active SharePoint connection found")
 
-            real_secret = os.environ.get("AZURE_CLIENT_SECRET", "")
+            real_secret = resolve_sharepoint_client_secret(conn)
             site_id = target.site_id or os.environ.get("SHAREPOINT_SITE_ID", "")
             
             graph = GraphClient(

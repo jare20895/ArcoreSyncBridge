@@ -13,6 +13,7 @@ from app.models.inventory import SharePointList, SharePointSite
 from app.services.sharepoint_content import SharePointContentService
 from app.services.graph import GraphClient
 from app.services.database import DatabaseClient
+from app.services.secrets import resolve_sharepoint_client_secret
 import os
 
 from app.services.sharding import ShardingEvaluator
@@ -29,8 +30,6 @@ class Pusher:
         if cache_key in self._content_service_cache:
             return self._content_service_cache[cache_key]
 
-        real_secret = os.environ.get("AZURE_CLIENT_SECRET", "")
-        
         if connection_id:
             conn = self.db.get(SharePointConnection, connection_id)
         else:
@@ -39,6 +38,8 @@ class Pusher:
 
         if not conn:
              raise ValueError("No active SharePoint connection found")
+
+        real_secret = resolve_sharepoint_client_secret(conn)
 
         graph = GraphClient(
             tenant_id=conn.tenant_id,

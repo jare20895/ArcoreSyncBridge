@@ -55,6 +55,7 @@ class TestTwoWayIntegration(unittest.TestCase):
         self.conn = SharePointConnection(
             tenant_id="t1",
             client_id="c1",
+            client_secret="test-secret",
             status="ACTIVE"
         )
 
