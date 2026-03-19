@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { getDatabaseInstances, updateDatabaseInstance, testDatabaseConnection, getDatabases } from '../../../services/api';
@@ -29,12 +29,8 @@ export default function EditDatabaseInstance() {
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testMessage, setTestMessage] = useState('');
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     if (!id) return;
-    loadData();
-  }, [id]);
-
-  const loadData = async () => {
     try {
       const [instances, databasesData] = await Promise.all([
         getDatabaseInstances(),
@@ -66,7 +62,11 @@ export default function EditDatabaseInstance() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });

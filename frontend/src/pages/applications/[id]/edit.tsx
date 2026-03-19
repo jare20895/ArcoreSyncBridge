@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { getApplication, updateApplication } from '../../../services/api';
@@ -15,12 +15,8 @@ export default function EditApplication() {
   });
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  const loadApplication = useCallback(async () => {
     if (!id) return;
-    loadApplication();
-  }, [id]);
-
-  const loadApplication = async () => {
     try {
       const app = await getApplication(id as string);
       setFormData({
@@ -35,7 +31,11 @@ export default function EditApplication() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    loadApplication();
+  }, [loadApplication]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });

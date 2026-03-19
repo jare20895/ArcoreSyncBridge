@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { getDatabase, updateDatabase, getApplications } from '../../../services/api';
@@ -18,12 +18,8 @@ export default function EditDatabase() {
   });
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     if (!id) return;
-    loadData();
-  }, [id]);
-
-  const loadData = async () => {
     try {
       const [dbData, appData] = await Promise.all([
         getDatabase(id as string),
@@ -44,7 +40,11 @@ export default function EditDatabase() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   getDatabases,
   getDatabaseInstances,
@@ -60,6 +60,15 @@ export default function DataSourcesPage() {
     return 'text';
   };
 
+  const ensureTableDetails = useCallback(async (tableId: string) => {
+    if (tableDetailsCache[tableId]) {
+      return tableDetailsCache[tableId];
+    }
+    const details = await getSourceTableDetails(tableId);
+    setTableDetailsCache((prev) => ({ ...prev, [tableId]: details }));
+    return details;
+  }, [tableDetailsCache]);
+
   useEffect(() => {
     if (provisionForm.tableId && showAdvanced) {
       ensureTableDetails(provisionForm.tableId).then((details) => {
@@ -79,7 +88,7 @@ export default function DataSourcesPage() {
         }
       });
     }
-  }, [provisionForm.tableId, showAdvanced]); // Depend on tableId and toggle
+  }, [ensureTableDetails, provisionForm.skipColumns, provisionForm.tableId, showAdvanced]);
 
   const handleAdvancedConfigChange = (colName: string, field: 'type' | 'included', value: any) => {
       setColumnConfig(prev => ({
@@ -178,15 +187,6 @@ export default function DataSourcesPage() {
 
   const handleProvisionChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setProvisionForm({ ...provisionForm, [e.target.name]: e.target.value });
-  };
-
-  const ensureTableDetails = async (tableId: string) => {
-    if (tableDetailsCache[tableId]) {
-      return tableDetailsCache[tableId];
-    }
-    const details = await getSourceTableDetails(tableId);
-    setTableDetailsCache((prev) => ({ ...prev, [tableId]: details }));
-    return details;
   };
 
   const handleProvision = async () => {

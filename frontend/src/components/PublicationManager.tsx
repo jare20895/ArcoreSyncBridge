@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { getPublicationStatus, createPublication, dropPublication, getPublicationAvailableTables } from '../services/api';
 import { RefreshCw, Plus, Trash2, CheckCircle, AlertTriangle, List as ListIcon } from 'lucide-react';
 
@@ -18,11 +18,7 @@ export const PublicationManager: React.FC<PublicationManagerProps> = ({ instance
   const [selectedTables, setSelectedTables] = useState<string[]>([]);
   const [loadingTables, setLoadingTables] = useState(false);
 
-  useEffect(() => {
-    loadStatus();
-  }, [instanceId]);
-
-  const loadStatus = async () => {
+  const loadStatus = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -33,7 +29,11 @@ export const PublicationManager: React.FC<PublicationManagerProps> = ({ instance
     } finally {
       setLoading(false);
     }
-  };
+  }, [instanceId]);
+
+  useEffect(() => {
+    loadStatus();
+  }, [loadStatus]);
 
   const handleModeChange = (newMode: 'ALL' | 'SELECT') => {
       setMode(newMode);

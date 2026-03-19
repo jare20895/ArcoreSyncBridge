@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   getConnections,
   getSharePointSites,
@@ -35,6 +35,12 @@ export default function DataTargetsPage() {
       .catch(() => setError('Failed to load SharePoint connections'));
   }, []);
 
+  const loadSites = useCallback((connId: string) => {
+    getSharePointSites(connId)
+      .then(setSites)
+      .catch(() => setError('Failed to load SharePoint sites'));
+  }, []);
+
   useEffect(() => {
     if (!selectedConnectionId) {
       setSites([]);
@@ -44,7 +50,6 @@ export default function DataTargetsPage() {
       setColumns([]);
       return;
     }
-    // Set default hostname for manual form if available
     const conn = connections.find(c => c.id === selectedConnectionId);
     if (conn && conn.hostname) {
         setSiteForm(prev => ({ ...prev, hostname: conn.hostname }));
@@ -55,13 +60,7 @@ export default function DataTargetsPage() {
     setLists([]);
     setColumns([]);
     loadSites(selectedConnectionId);
-  }, [selectedConnectionId]);
-
-  const loadSites = (connId: string) => {
-    getSharePointSites(connId)
-      .then(setSites)
-      .catch(() => setError('Failed to load SharePoint sites'));
-  };
+  }, [connections, loadSites, selectedConnectionId]);
 
   useEffect(() => {
     if (!selectedSiteId) {

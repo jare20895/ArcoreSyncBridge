@@ -92,7 +92,7 @@ export default function NewSyncDefinition() {
       if (table && !formData.name) {
           setFormData(prev => ({ ...prev, name: `Sync ${table.table_name}` }));
       }
-  }, [formData.source_table_id]);
+  }, [formData.name, formData.source_table_id, tables]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });

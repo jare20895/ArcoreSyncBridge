@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { getReplicationSlots, createReplicationSlot, dropReplicationSlot } from '../services/api';
 
 interface ReplicationSlot {
@@ -21,11 +21,7 @@ export const ReplicationSlotManager: React.FC<ReplicationSlotManagerProps> = ({ 
   const [newSlotName, setNewSlotName] = useState('');
   const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
-    loadSlots();
-  }, [instanceId]);
-
-  const loadSlots = async () => {
+  const loadSlots = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -36,7 +32,11 @@ export const ReplicationSlotManager: React.FC<ReplicationSlotManagerProps> = ({ 
     } finally {
       setLoading(false);
     }
-  };
+  }, [instanceId]);
+
+  useEffect(() => {
+    loadSlots();
+  }, [loadSlots]);
 
   const handleCreate = async () => {
     if (!newSlotName) return;

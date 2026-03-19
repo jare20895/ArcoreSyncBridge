@@ -54,7 +54,7 @@ export default function SyncDefinitionDetail() {
       if (isEditingTargets && sites.length === 0) {
           getSharePointSites().then(setSites).catch(console.error);
       }
-  }, [isEditingTargets]);
+  }, [isEditingTargets, sites.length]);
 
   // Load Lists when Site Selected
   useEffect(() => {
