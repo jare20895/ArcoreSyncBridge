@@ -21,12 +21,18 @@ celery_app.conf.update(
         "app.worker.tasks.run_push_sync": {"queue": "sync_queue"},
         "app.worker.tasks.run_ingress_sync": {"queue": "sync_queue"},
         "app.worker.tasks.run_scheduled_sync": {"queue": "sync_queue"},
-        # Future tasks
-        # "app.worker.tasks.generate_drift_report": {"queue": "reports_queue"},
+        "app.worker.tasks.reconcile_drift_metrics": {"queue": "default"},
+        "app.worker.tasks.reconcile_single_sync": {"queue": "default"},
     },
     # Celery Beat Configuration
     beat_scheduler="celery_sqlalchemy_scheduler.schedulers:DatabaseScheduler",
     beat_dburi=os.environ.get("DATABASE_URL", "postgresql://arcore:arcore_password@db:5432/arcore_syncbridge"),
     beat_schedule_filename="/tmp/celerybeat-schedule",  # Fallback for file-based scheduler
-    beat_schedule={},  # Disable default tasks (backend_cleanup) to avoid zoneinfo compatibility issues
+    beat_schedule={
+        "reconcile-drift-metrics-every-30-minutes": {
+            "task": "app.worker.tasks.reconcile_drift_metrics",
+            "schedule": 1800.0,  # 30 minutes in seconds
+            "options": {"queue": "default"}
+        },
+    },
 )

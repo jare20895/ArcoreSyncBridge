@@ -17,7 +17,7 @@ from app.services.cdc_consumer import CDCConsumer
 from sqlalchemy import text # Added for raw SQL execution
 from unittest.mock import MagicMock
 
-API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000/api/v1") # Backend API (internal access)
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8401/api/v1") # Backend API (internal access)
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 DB_HOST = os.environ.get("POSTGRES_HOST", "db")
 DB_PORT = int(os.environ.get("POSTGRES_PORT", "5432"))

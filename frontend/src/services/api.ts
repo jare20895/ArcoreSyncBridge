@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8055';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8401';
 
 const api = axios.create({
   baseURL: `${API_URL}/api/v1`,
@@ -346,6 +346,46 @@ export const dropPublication = async (instanceId: string, pubName: string = "arc
       pub_name: pubName
     }
   });
+  return res.data;
+};
+
+// Health Monitoring
+export const getCdcHealth = async () => {
+  const res = await api.get('/health/cdc-health');
+  return res.data;
+};
+
+export const getDatabaseStats = async () => {
+  const res = await api.get('/health/database-stats');
+  return res.data;
+};
+
+// Metrics
+export const getSystemCounts = async () => {
+  const res = await api.get('/metrics/counts');
+  return res.data;
+};
+
+export const getSystemSnapshot = async (durationSeconds: number = 15) => {
+  const res = await api.post('/metrics/system-snapshot', null, {
+    params: { duration_seconds: durationSeconds }
+  });
+  return res.data;
+};
+
+// Drift Metrics
+export const getDriftSummary = async () => {
+  const res = await api.get('/metrics/drift-summary');
+  return res.data;
+};
+
+export const getDriftMetrics = async () => {
+  const res = await api.get('/metrics/drift-metrics');
+  return res.data;
+};
+
+export const triggerDriftReconciliation = async () => {
+  const res = await api.post('/metrics/reconcile-drift');
   return res.data;
 };
 

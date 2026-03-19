@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint --no-cache",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@reactflow/background": "^11.3.14",
@@ -24,6 +25,8 @@
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^14.0.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",

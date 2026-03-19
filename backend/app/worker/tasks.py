@@ -11,6 +11,7 @@ from app.models.core import SyncDefinition
 from app.services.pusher import Pusher
 from app.services.synchronizer import Synchronizer
 from app.services.run_history import RunHistoryService
+from app.services.reconciliation import ReconciliationService
 
 logger = get_task_logger(__name__)
 
@@ -182,4 +183,77 @@ def run_scheduled_sync(self, sync_def_id: str):
         raise
     finally:
         lock.release()
+        db.close()
+
+
+@celery_app.task(bind=True)
+def reconcile_drift_metrics(self):
+    """
+    Background task to reconcile drift metrics for all active sync definitions.
+    Calculates source vs target row counts and updates sync_metrics table.
+    Run periodically (e.g., every 15-30 minutes) via Celery Beat.
+    """
+    logger.info("Starting drift reconciliation for all syncs")
+
+    lock_key = "drift_reconciliation_lock"
+    lock = redis_client.lock(lock_key, timeout=1800)  # 30 min max
+
+    if not lock.acquire(blocking=False):
+        logger.warning("Drift reconciliation already running, skipping")
+        return "Skipped: Already running"
+
+    db = SessionLocal()
+    try:
+        reconciliation_service = ReconciliationService(db)
+        summary = reconciliation_service.reconcile_all_syncs()
+
+        logger.info(
+            f"Drift reconciliation completed: {summary['reconciled']} succeeded, "
+            f"{summary['failed']} failed out of {summary['total_syncs']} total syncs"
+        )
+
+        if summary['errors']:
+            logger.warning(f"Errors during reconciliation: {summary['errors']}")
+
+        return summary
+
+    except Exception as e:
+        logger.exception(f"Drift reconciliation failed: {str(e)}")
+        raise
+    finally:
+        lock.release()
+        db.close()
+
+
+@celery_app.task(bind=True)
+def reconcile_single_sync(self, sync_def_id: str):
+    """
+    Reconcile drift metrics for a single sync definition.
+    Can be triggered on-demand or after sync completion.
+    """
+    logger.info(f"Reconciling drift for sync {sync_def_id}")
+
+    db = SessionLocal()
+    try:
+        reconciliation_service = ReconciliationService(db)
+        metric = reconciliation_service.reconcile_sync(UUID(sync_def_id))
+
+        logger.info(
+            f"Drift reconciliation for {sync_def_id} completed: "
+            f"source={metric.source_row_count}, target={metric.target_row_count}, "
+            f"delta={metric.reconcile_delta}, status={metric.reconcile_status}"
+        )
+
+        return {
+            "sync_def_id": str(sync_def_id),
+            "source_count": metric.source_row_count,
+            "target_count": metric.target_row_count,
+            "delta": metric.reconcile_delta,
+            "status": metric.reconcile_status
+        }
+
+    except Exception as e:
+        logger.exception(f"Failed to reconcile sync {sync_def_id}: {str(e)}")
+        raise
+    finally:
         db.close()

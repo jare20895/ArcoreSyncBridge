@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.core import DatabaseInstance, SyncDefinition, SyncSource
+from app.models.inventory import DatabaseTable
 from app.services.cdc import CDCService
 
 logger = logging.getLogger(__name__)
@@ -112,10 +113,10 @@ class CDCManager:
             select(SyncDefinition).where(SyncDefinition.cdc_enabled == True)
         ).scalars().all()
 
-        # Collect unique instance IDs from their primary sources
+        # Collect unique instance IDs
         instance_ids = set()
         for sync_def in cdc_enabled_defs:
-            # Get primary source for this sync definition
+            # 1. Check for explicit SyncSource
             stmt = select(SyncSource).where(
                 SyncSource.sync_def_id == sync_def.id,
                 SyncSource.role == "PRIMARY"
@@ -123,6 +124,24 @@ class CDCManager:
             source = self.db.execute(stmt).scalar_one_or_none()
             if source:
                 instance_ids.add(source.database_instance_id)
+                continue
+
+            # 2. Check for Inventory Link (source_table_id)
+            if sync_def.source_table_id:
+                table = self.db.get(DatabaseTable, sync_def.source_table_id)
+                if table:
+                    # Resolve to active instance for this database
+                    instance = self.db.execute(
+                        select(DatabaseInstance)
+                        .where(
+                            DatabaseInstance.database_id == table.database_id,
+                            DatabaseInstance.status == "ACTIVE"
+                        )
+                        .order_by(DatabaseInstance.priority)
+                    ).scalars().first()
+                    
+                    if instance:
+                        instance_ids.add(instance.id)
 
         instance_ids = list(instance_ids)
 

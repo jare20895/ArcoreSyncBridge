@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import Layout from '../components/Layout';
 import { Save, Globe, Lock, Shield, User, Database, Cloud, Edit2, EyeOff } from 'lucide-react';
 import { getDatabaseInstances, getConnections, updateDatabaseInstance, updateConnection } from '../services/api';
@@ -110,7 +111,7 @@ export default function SettingsPage() {
                 <div className="space-y-4">
                     <div className="flex justify-between items-center">
                         <h3 className="font-medium text-light-text-primary dark:text-dark-text-primary">Active Connections</h3>
-                        <a href="/sharepoint-connections/new" className="text-sm text-light-primary dark:text-dark-primary hover:underline font-medium">Add New</a>
+                        <Link href="/sharepoint-connections/new" className="text-sm text-light-primary dark:text-dark-primary hover:underline font-medium">Add New</Link>
                     </div>
 
                     <div className="border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">

@@ -1,27 +1,37 @@
 import psycopg
+from psycopg import sql
 from typing import Dict, Any, Optional, List
 from app.models.core import DatabaseInstance
 
 class DatabaseClient:
     def __init__(self, instance: DatabaseInstance, db_name: str = "postgres"):
-        # Prioritize Instance credentials if available
-        # Fallback to dev defaults only if missing
-        
-        user = instance.username or "arcore"
-        password = instance.password or "arcore_password" # TODO: Decrypt if encrypted
-        
+        user = instance.username
+        password = instance.password
         target_db = instance.db_name or db_name
-        
-        # Ensure host/port
+
+        if not user:
+            raise ValueError(f"Database instance '{instance.instance_label}' is missing a username")
+        if not password:
+            raise ValueError(f"Database instance '{instance.instance_label}' is missing a password")
+        if not target_db:
+            raise ValueError(f"Database instance '{instance.instance_label}' is missing a database name")
+
         host = instance.host
         port = instance.port or 5432
-        
+
         self.dsn = f"postgresql://{user}:{password}@{host}:{port}/{target_db}"
+
+    @staticmethod
+    def _qualified_table(schema: str, table: str) -> sql.Composed:
+        return sql.SQL(".").join([sql.Identifier(schema), sql.Identifier(table)])
 
     def fetch_row(self, schema: str, table: str, pk_col: str, pk_val: Any) -> Optional[Dict[str, Any]]:
         with psycopg.connect(self.dsn) as conn:
             with conn.cursor() as cur:
-                query = f"SELECT * FROM {schema}.{table} WHERE {pk_col} = %s"
+                query = sql.SQL("SELECT * FROM {} WHERE {} = %s").format(
+                    self._qualified_table(schema, table),
+                    sql.Identifier(pk_col),
+                )
                 cur.execute(query, (pk_val,))
                 
                 if cur.description is None:
@@ -41,10 +51,13 @@ class DatabaseClient:
             return None
             
         placeholders = ["%s"] * len(cols)
-        col_str = ", ".join(cols)
         val_str = ", ".join(placeholders)
-        
-        query = f"INSERT INTO {schema}.{table} ({col_str}) VALUES ({val_str}) RETURNING *"
+
+        query = sql.SQL("INSERT INTO {} ({}) VALUES ({}) RETURNING *").format(
+            self._qualified_table(schema, table),
+            sql.SQL(", ").join(sql.Identifier(col) for col in cols),
+            sql.SQL(val_str),
+        )
         
         with psycopg.connect(self.dsn) as conn:
             with conn.cursor() as cur:
@@ -61,11 +74,17 @@ class DatabaseClient:
     def update_row(self, schema: str, table: str, pk_col: str, pk_val: Any, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not data:
             return None
-            
-        set_clauses = [f"{k} = %s" for k in data.keys()]
-        set_str = ", ".join(set_clauses)
-        
-        query = f"UPDATE {schema}.{table} SET {set_str} WHERE {pk_col} = %s RETURNING *"
+
+        set_clause = sql.SQL(", ").join(
+            sql.SQL("{} = %s").format(sql.Identifier(col))
+            for col in data.keys()
+        )
+
+        query = sql.SQL("UPDATE {} SET {} WHERE {} = %s RETURNING *").format(
+            self._qualified_table(schema, table),
+            set_clause,
+            sql.Identifier(pk_col),
+        )
         values = list(data.values()) + [pk_val]
         
         with psycopg.connect(self.dsn) as conn:
@@ -80,7 +99,10 @@ class DatabaseClient:
             return None
 
     def delete_row(self, schema: str, table: str, pk_col: str, pk_val: Any) -> bool:
-        query = f"DELETE FROM {schema}.{table} WHERE {pk_col} = %s"
+        query = sql.SQL("DELETE FROM {} WHERE {} = %s").format(
+            self._qualified_table(schema, table),
+            sql.Identifier(pk_col),
+        )
         with psycopg.connect(self.dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute(query, (pk_val,))
@@ -91,12 +113,17 @@ class DatabaseClient:
         where_clause = ""
         params = []
         if cursor_val is not None:
-            where_clause = f"WHERE {cursor_col} > %s"
+            where_clause = sql.SQL("WHERE {} > %s").format(sql.Identifier(cursor_col))
             params.append(cursor_val)
+        else:
+            where_clause = sql.SQL("")
 
-        query = f"SELECT * FROM {schema}.{table} {where_clause} ORDER BY {cursor_col} ASC LIMIT {limit}"
-        print(f"[DEBUG] DatabaseClient SQL: {query}")
-        print(f"[DEBUG] DatabaseClient Params: {params}")
+        query = sql.SQL("SELECT * FROM {} {} ORDER BY {} ASC LIMIT {}").format(
+            self._qualified_table(schema, table),
+            where_clause,
+            sql.Identifier(cursor_col),
+            sql.Literal(limit),
+        )
 
         with psycopg.connect(self.dsn) as conn:
             with conn.cursor() as cur:

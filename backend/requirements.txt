@@ -17,3 +17,5 @@ simpleeval
 pydantic-settings
 tenacity
 sqladmin[full]
+psutil
+docker

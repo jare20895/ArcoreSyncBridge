@@ -68,11 +68,11 @@ export default function RunsPage() {
   const getRunTypeIcon = (runType: string) => {
     switch (runType) {
       case 'PUSH':
-        return <ArrowRight size={16} className="text-blue-500" title="Push (DB → SharePoint)" />;
+        return <ArrowRight size={16} className="text-blue-500" />;
       case 'INGRESS':
-        return <ArrowRight size={16} className="text-purple-500 rotate-180" title="Pull (SharePoint → DB)" />;
+        return <ArrowRight size={16} className="text-purple-500 rotate-180" />;
       case 'CDC':
-        return <RefreshCw size={16} className="text-green-500" title="CDC (Real-time)" />;
+        return <RefreshCw size={16} className="text-green-500" />;
       default:
         return <Play size={16} className="text-gray-500" />;
     }
@@ -212,7 +212,18 @@ export default function RunsPage() {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center space-x-2">
+                        <div
+                          className="flex items-center space-x-2"
+                          title={
+                            run.run_type === 'PUSH'
+                              ? 'Push (DB to SharePoint)'
+                              : run.run_type === 'INGRESS'
+                              ? 'Pull (SharePoint to DB)'
+                              : run.run_type === 'CDC'
+                              ? 'CDC (Real-time)'
+                              : run.run_type
+                          }
+                        >
                           {getRunTypeIcon(run.run_type)}
                           <span className="text-sm text-light-text-primary dark:text-dark-text-primary">
                             {run.run_type}

@@ -2,6 +2,7 @@ import logging
 import os
 import threading
 import time
+from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
@@ -38,8 +39,19 @@ class CDCService:
         # Determine Slot Name
         self.slot_name = self.instance.replication_slot_name or f"arcore_cdc_{str(self.instance.id).replace('-', '_')}"
         
-        # Determine Start LSN from metadata or cursor
-        self.start_lsn = self.instance.last_wal_lsn or "0/0"
+        # Determine Start LSN from Redis (preferred) or fallback to database
+        checkpoint_key = f"arcore:cdc:checkpoint:{self.instance_id}"
+        redis_lsn = self.redis.get(checkpoint_key)
+        if redis_lsn:
+            self.start_lsn = redis_lsn.decode('utf-8')
+            logger.info(f"Resumed from Redis checkpoint: {self.start_lsn}")
+        else:
+            self.start_lsn = self.instance.last_wal_lsn or "0/0"
+            logger.info(f"No Redis checkpoint found, using database value: {self.start_lsn}")
+        
+        # Checkpoint state
+        self.last_checkpoint_time = datetime.utcnow()
+        self.checkpoint_interval = timedelta(seconds=60)  # Reduced from 10s to 60s (acceptable 1-min data loss window)
 
     def run(self):
         logger.info(f"Starting CDC for instance {self.instance.instance_label} on slot {self.slot_name}")
@@ -72,15 +84,24 @@ class CDCService:
                     if self.stop_event.is_set():
                         raise StopIteration # Graceful exit from consume_stream
 
+                    should_checkpoint = False
+
                     # Process Message
                     if msg.payload:
                         self._handle_message(msg)
+                        should_checkpoint = True # Always checkpoint on data
                     
-                    # Send Feedback
+                    # Periodic checkpoint for KeepAlives
+                    now = datetime.utcnow()
+                    if now - self.last_checkpoint_time > self.checkpoint_interval:
+                        should_checkpoint = True
+
+                    # Send Feedback & Checkpoint
                     msg.cursor.send_feedback(flush_lsn=msg.data_start)
                     
-                    # Persist LSN
-                    self._checkpoint(msg.data_start)
+                    if should_checkpoint:
+                        self._checkpoint(msg.data_start)
+                        self.last_checkpoint_time = now
 
                 cur.consume_stream(consume_stream)
 
@@ -106,9 +127,17 @@ class CDCService:
         high = lsn >> 32
         low = lsn & 0xFFFFFFFF
         lsn_str = f"{high:X}/{low:X}"
-        
-        self.instance.last_wal_lsn = lsn_str
-        self.db.commit()
+
+        # Store checkpoint in Redis instead of database_instances table
+        # to avoid table bloat from frequent updates
+        checkpoint_key = f"arcore:cdc:checkpoint:{self.instance_id}"
+        self.redis.set(checkpoint_key, lsn_str)
+
+        # Optionally update database_instances much less frequently (e.g., every 5 minutes)
+        # This provides disaster recovery fallback without causing bloat
+        # Commented out for now - rely on Redis only
+        # self.instance.last_wal_lsn = lsn_str
+        # self.db.commit()
 
     @staticmethod
     def _lsn_to_int(lsn: Optional[str]) -> int:

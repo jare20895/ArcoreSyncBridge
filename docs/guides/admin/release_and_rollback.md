@@ -50,5 +50,5 @@ To revert the running application to the previous version:
 
 ### Verification
 1.  Check logs for startup errors: `docker-compose logs -f backend`.
-2.  Verify Health Endpoint: `curl http://localhost:8055/health`.
+2.  Verify Health Endpoint: `curl http://localhost:8401/health`.
 3.  Check Admin UI for functionality.

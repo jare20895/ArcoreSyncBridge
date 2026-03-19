@@ -374,7 +374,7 @@ export default function EditDatabaseInstance() {
                         className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm p-2 bg-white dark:bg-dark-surface text-light-text-primary dark:text-dark-text-primary placeholder-gray-400 dark:placeholder-gray-500"
                     />
                     <p className="text-xs text-light-text-secondary dark:text-dark-text-secondary mt-1">
-                        Required for CDC syncs. Create a slot in the "Replication Slots" tab and enter its name here.
+                        Required for CDC syncs. Create a slot in the &quot;Replication Slots&quot; tab and enter its name here.
                     </p>
                     </div>
 

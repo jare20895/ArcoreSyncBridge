@@ -277,7 +277,9 @@ export default function FieldMappingEditor({
                       </span>
                     )}
                     {mapping.is_system_field && (
-                      <Shield size={14} className="text-purple-500" title="System Field" />
+                      <span title="System Field">
+                        <Shield size={14} className="text-purple-500" />
+                      </span>
                     )}
                   </div>
                 </td>

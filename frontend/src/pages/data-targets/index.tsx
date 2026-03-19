@@ -227,7 +227,7 @@ export default function DataTargetsPage() {
               ))}
             </select>
             {selectedConnectionId && sites.length === 0 && !siteExtractLoading && (
-                <p className="text-xs text-gray-500 mt-1">No sites found. Click "Discover Sites" to scan your tenant.</p>
+                <p className="text-xs text-gray-500 mt-1">No sites found. Click &quot;Discover Sites&quot; to scan your tenant.</p>
             )}
           </div>
         </div>

@@ -142,10 +142,10 @@ export default function Layout({ children }: LayoutProps) {
              <ul className="space-y-1">
                 {activeTab?.name === 'Dashboard' && (
                     <>
-                        <li><a href="#" className="block px-3 py-2 rounded bg-light-primary/5 text-light-primary dark:bg-dark-primary/20 dark:text-dark-primary font-medium">Overview</a></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Throughput</a></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Alerts</a></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Drift Summary</a></li>
+                        <li><Link href="/#overview" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-light-primary dark:hover:text-dark-primary">Overview</Link></li>
+                        <li><Link href="/#diagrams" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-light-primary dark:hover:text-dark-primary">Sync Diagrams</Link></li>
+                        <li><Link href="/#cdc" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-light-primary dark:hover:text-dark-primary">CDC Management</Link></li>
+                        <li><Link href="/#metrics" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-light-primary dark:hover:text-dark-primary">System Metrics</Link></li>
                     </>
                 )}
                 {activeTab?.name === 'Sync Definitions' && (

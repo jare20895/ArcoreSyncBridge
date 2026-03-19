@@ -28,11 +28,12 @@ services:
   backend:
     build: ./backend
     restart: always
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8401
     ports:
-      - "8055:8000"
+      - "8401:8401"
     volumes:
       - ./backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock
     env_file:
       - ./backend/.env
     environment:
@@ -60,7 +61,7 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - NEXT_PUBLIC_API_URL=http://arcore:8055
+      - NEXT_PUBLIC_API_URL=http://arcore:8401
     depends_on:
       - backend
 

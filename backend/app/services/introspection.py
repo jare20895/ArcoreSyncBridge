@@ -4,9 +4,17 @@ from app.schemas.introspection import TableInfo, ColumnInfo, SchemaSnapshot
 from app.models.core import DatabaseInstance
 
 def build_dsn(instance: DatabaseInstance, database_name: Optional[str] = None) -> str:
-    user = instance.username or "arcore"
-    password = instance.password or "arcore_password"
-    db_name = database_name or instance.db_name or instance.database_name_override or "postgres"
+    user = instance.username
+    password = instance.password
+    db_name = database_name or instance.db_name or instance.database_name_override
+
+    if not user:
+        raise ValueError(f"Database instance '{instance.instance_label}' is missing a username")
+    if not password:
+        raise ValueError(f"Database instance '{instance.instance_label}' is missing a password")
+    if not db_name:
+        raise ValueError(f"Database instance '{instance.instance_label}' is missing a database name")
+
     return f"postgresql://{user}:{password}@{instance.host}:{instance.port}/{db_name}"
 
 class PostgresIntrospector:

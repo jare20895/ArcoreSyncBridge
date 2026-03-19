@@ -7,7 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqladmin import Admin
 
-from app.api.endpoints import database_instances, sharepoint_connections, provisioning, sharepoint_discovery, sync_definitions, moves, ops, replication, runs, applications, databases, data_sources, data_targets, field_mappings, schedules, cdc
+from app.api.endpoints import database_instances, sharepoint_connections, provisioning, sharepoint_discovery, sync_definitions, moves, ops, replication, runs, applications, databases, data_sources, data_targets, field_mappings, schedules, cdc, health, metrics
+from app.core.config import settings
 from app.db.session import engine, SessionLocal
 from app.services.cdc_manager import CDCManager
 from app.admin import (
@@ -79,7 +80,7 @@ admin.add_view(MoveAuditLogAdmin)
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Allow all origins for dev
+    allow_origins=settings.cors_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -119,6 +120,8 @@ app.include_router(replication.router, prefix="/api/v1/replication", tags=["repl
 app.include_router(runs.router, prefix="/api/v1/runs", tags=["runs"])
 app.include_router(schedules.router, prefix="/api/v1/schedules", tags=["schedules"])
 app.include_router(cdc.router, prefix="/api/v1/cdc", tags=["cdc"])
+app.include_router(health.router, prefix="/api/v1/health", tags=["health"])
+app.include_router(metrics.router, prefix="/api/v1/metrics", tags=["metrics"])
 
 @app.get("/health")
 async def health_check():

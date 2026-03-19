@@ -28,4 +28,4 @@ docker exec -it arcoresyncbridge-db-1 psql -U arcore -d arcore_syncbridge
 
 ## SQLAdmin
 A web-based admin interface is available at:
-`http://localhost:8055/admin`
+`http://localhost:8401/admin`

@@ -18,7 +18,7 @@ DB_PORT = int(os.environ.get("POSTGRES_PORT", "5465"))
 DB_NAME = os.environ.get("POSTGRES_DB", "arcore_syncbridge")
 DB_USER = os.environ.get("POSTGRES_USER", "arcore")
 DB_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "arcore_password")
-API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8055/api/v1")
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8401/api/v1")
 
 def verify_fallback():
     print("Setting up test data for CDC fallback verification...")
