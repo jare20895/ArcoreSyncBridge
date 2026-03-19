@@ -2,8 +2,13 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Plus, Edit, Trash2 } from 'lucide-react';
 import { getApplications, deleteApplication } from '../../services/api';
+import { useToast } from '../../components/ui/ToastProvider';
+import { useConfirmDialog } from '../../components/ui/ConfirmDialogProvider';
+import { getErrorMessage } from '../../lib/errors';
 
 export default function ApplicationsPage() {
+  const { showToast } = useToast();
+  const { confirm } = useConfirmDialog();
   const [applications, setApplications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -25,13 +30,30 @@ export default function ApplicationsPage() {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (window.confirm(`Are you sure you want to delete application "${name}"? This will delete all associated databases and instances.`)) {
-      try {
-        await deleteApplication(id);
-        loadApplications();
-      } catch (err: any) {
-        alert(err.response?.data?.detail || 'Failed to delete application');
-      }
+    const confirmed = await confirm({
+      title: 'Delete application?',
+      description: `Delete "${name}" and all associated databases and instances.`,
+      confirmLabel: 'Delete application',
+      tone: 'danger'
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deleteApplication(id);
+      showToast({
+        title: 'Application deleted',
+        description: `${name} was removed successfully.`,
+        variant: 'success'
+      });
+      loadApplications();
+    } catch (err: any) {
+      showToast({
+        title: 'Delete failed',
+        description: getErrorMessage(err, 'Failed to delete application'),
+        variant: 'error'
+      });
     }
   };
 

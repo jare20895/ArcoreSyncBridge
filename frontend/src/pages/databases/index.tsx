@@ -2,8 +2,13 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Plus, Edit, Trash2 } from 'lucide-react';
 import { getDatabases, deleteDatabase, getApplications } from '../../services/api';
+import { useToast } from '../../components/ui/ToastProvider';
+import { useConfirmDialog } from '../../components/ui/ConfirmDialogProvider';
+import { getErrorMessage } from '../../lib/errors';
 
 export default function DatabasesPage() {
+  const { showToast } = useToast();
+  const { confirm } = useConfirmDialog();
   const [databases, setDatabases] = useState<any[]>([]);
   const [applications, setApplications] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
@@ -36,13 +41,30 @@ export default function DatabasesPage() {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (window.confirm(`Are you sure you want to delete database "${name}"? This will delete all associated database instances.`)) {
-      try {
-        await deleteDatabase(id);
-        loadData();
-      } catch (err: any) {
-        alert(err.response?.data?.detail || 'Failed to delete database');
-      }
+    const confirmed = await confirm({
+      title: 'Delete database?',
+      description: `Delete "${name}" and all associated database instances.`,
+      confirmLabel: 'Delete database',
+      tone: 'danger'
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deleteDatabase(id);
+      showToast({
+        title: 'Database deleted',
+        description: `${name} was removed successfully.`,
+        variant: 'success'
+      });
+      loadData();
+    } catch (err: any) {
+      showToast({
+        title: 'Delete failed',
+        description: getErrorMessage(err, 'Failed to delete database'),
+        variant: 'error'
+      });
     }
   };
 

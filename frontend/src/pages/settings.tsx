@@ -3,8 +3,11 @@ import Link from 'next/link';
 import Layout from '../components/Layout';
 import { Save, Globe, Lock, Shield, User, Database, Cloud, Edit2, EyeOff } from 'lucide-react';
 import { getDatabaseInstances, getConnections, updateDatabaseInstance, updateConnection } from '../services/api';
+import { useToast } from '../components/ui/ToastProvider';
+import { getErrorMessage } from '../lib/errors';
 
 export default function SettingsPage() {
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('integrations');
   const [dbInstances, setDbInstances] = useState<any[]>([]);
   const [spConnections, setSpConnections] = useState<any[]>([]);
@@ -34,12 +37,20 @@ export default function SettingsPage() {
           } else {
               await updateConnection(id, { client_secret: newSecret });
           }
-          alert("Secret updated successfully");
+          showToast({
+            title: 'Secret updated',
+            description: type === 'DB' ? 'Database credentials were updated.' : 'SharePoint credentials were updated.',
+            variant: 'success'
+          });
           setEditingId(null);
           setNewSecret('');
       } catch (e) {
           console.error(e);
-          alert("Failed to update secret");
+          showToast({
+            title: 'Secret update failed',
+            description: getErrorMessage(e, 'Failed to update secret'),
+            variant: 'error'
+          });
       }
   };
 

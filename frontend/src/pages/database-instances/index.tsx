@@ -2,8 +2,13 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getDatabaseInstances, triggerFailover, deleteDatabaseInstance, getDatabases } from '../../services/api';
 import { Database, ShieldAlert, ArrowRight, Edit, Trash2 } from 'lucide-react';
+import { useToast } from '../../components/ui/ToastProvider';
+import { useConfirmDialog } from '../../components/ui/ConfirmDialogProvider';
+import { getErrorMessage } from '../../lib/errors';
 
 export default function DatabaseInstancesList() {
+  const { showToast } = useToast();
+  const { confirm } = useConfirmDialog();
   const [dbs, setDbs] = useState<any[]>([]);
   const [databases, setDatabases] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
@@ -45,25 +50,47 @@ export default function DatabaseInstancesList() {
             new_primary_instance_id: failoverTarget.id,
             old_primary_instance_id: primaryToFail || undefined
         });
-        alert(`Successfully promoted ${failoverTarget.instance_label}`);
+        showToast({
+          title: 'Replica promoted',
+          description: `${failoverTarget.instance_label} is now the primary instance.`,
+          variant: 'success'
+        });
         setFailoverTarget(null);
         setPrimaryToFail('');
         loadDbs();
     } catch (e: any) {
-        alert("Failover failed: " + (e.response?.data?.detail || e.message));
+        showToast({
+          title: 'Failover failed',
+          description: getErrorMessage(e, 'The database failover could not be completed'),
+          variant: 'error'
+        });
     } finally {
         setLoading(false);
     }
   };
 
   const handleDelete = async (id: string, label: string) => {
-    if (!confirm(`Are you sure you want to delete instance "${label}"?`)) return;
+    const confirmed = await confirm({
+      title: 'Delete database instance?',
+      description: `Delete "${label}" from the connection inventory.`,
+      confirmLabel: 'Delete instance',
+      tone: 'danger'
+    });
+    if (!confirmed) return;
     try {
         await deleteDatabaseInstance(id);
-        alert(`Successfully deleted ${label}`);
+        showToast({
+          title: 'Instance deleted',
+          description: `${label} was removed from the inventory.`,
+          variant: 'success'
+        });
         loadDbs();
     } catch (e: any) {
-        alert("Delete failed: " + (e.response?.data?.detail || e.message));
+        showToast({
+          title: 'Delete failed',
+          description: getErrorMessage(e, 'The database instance could not be deleted'),
+          variant: 'error'
+        });
     }
   };
 

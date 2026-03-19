@@ -18,10 +18,15 @@ import ScheduleConfig from '../../components/ScheduleConfig';
 import CDCToggle from '../../components/CDCToggle';
 import MermaidDiagram from '../../components/diagrams/MermaidDiagram';
 import { generateSyncFlowMermaid } from '../../lib/generateSyncMermaid';
+import { useToast } from '../../components/ui/ToastProvider';
+import { useConfirmDialog } from '../../components/ui/ConfirmDialogProvider';
+import { getErrorMessage } from '../../lib/errors';
 
 export default function SyncDefinitionDetail() {
   const router = useRouter();
   const { id } = router.query;
+  const { showToast } = useToast();
+  const { confirm } = useConfirmDialog();
   const [def, setDef] = useState<any>(null);
   const [activeSection, setActiveSection] = useState('overview');
   const [report, setReport] = useState<any>(null);
@@ -116,7 +121,11 @@ export default function SyncDefinitionDetail() {
         setReport(res);
     } catch (e) {
         console.error(e);
-        alert("Failed to run report");
+        showToast({
+            title: 'Drift report failed',
+            description: getErrorMessage(e, 'Failed to run drift report'),
+            variant: 'error'
+        });
     } finally {
         setLoadingReport(false);
     }
@@ -127,10 +136,18 @@ export default function SyncDefinitionDetail() {
     setRunningSync(true);
     try {
         const res = await triggerSync(id as string);
-        alert("Sync Completed: " + JSON.stringify(res, null, 2));
+        showToast({
+            title: 'Sync completed',
+            description: res?.message || 'The sync finished successfully.',
+            variant: 'success'
+        });
     } catch (e) {
         console.error(e);
-        alert("Failed to run sync: " + String(e));
+        showToast({
+            title: 'Sync failed',
+            description: getErrorMessage(e, 'Failed to run sync'),
+            variant: 'error'
+        });
     } finally {
         setRunningSync(false);
     }
@@ -138,15 +155,29 @@ export default function SyncDefinitionDetail() {
 
   const handleResetCursors = async () => {
     if (!id) return;
-    if (!confirm("Are you sure you want to reset all sync cursors?\n\nThis will force the next sync to start from the beginning and process all rows.")) {
+    const confirmed = await confirm({
+        title: 'Reset sync cursors?',
+        description: 'This will force the next sync to reprocess all rows from the beginning.',
+        confirmLabel: 'Reset cursors',
+        tone: 'danger'
+    });
+    if (!confirmed) {
         return;
     }
     try {
         const res = await resetSyncCursors(id as string);
-        alert(`Success: ${res.message}`);
+        showToast({
+            title: 'Cursors reset',
+            description: res?.message || 'The sync cursors were reset successfully.',
+            variant: 'success'
+        });
     } catch (e) {
         console.error(e);
-        alert("Failed to reset cursors: " + String(e));
+        showToast({
+            title: 'Cursor reset failed',
+            description: getErrorMessage(e, 'Failed to reset sync cursors'),
+            variant: 'error'
+        });
     }
   };
 
@@ -157,7 +188,11 @@ export default function SyncDefinitionDetail() {
           setDef(updated);
       } catch (e) {
           console.error(e);
-          alert("Failed to update sync mode");
+          showToast({
+              title: 'Sync mode update failed',
+              description: getErrorMessage(e, 'Failed to update sync mode'),
+              variant: 'error'
+          });
       }
   };
 
@@ -169,10 +204,14 @@ export default function SyncDefinitionDetail() {
           // Refresh the sync definition to get the latest data
           const updated = await getSyncDefinition(id as string);
           setDef(updated);
-          alert('Field mappings saved successfully!');
+          showToast({
+              title: 'Field mappings saved',
+              description: `${updatedMappings.length || mappings.length} mappings updated.`,
+              variant: 'success'
+          });
       } catch (e) {
           console.error(e);
-          throw new Error('Failed to save field mappings');
+          throw new Error(getErrorMessage(e, 'Failed to save field mappings'));
       }
   };
 
@@ -190,9 +229,18 @@ export default function SyncDefinitionDetail() {
           setDef(updated);
           setIsEditingTargets(false);
           setEditListId('');
+          showToast({
+              title: 'Target list updated',
+              description: 'The sync definition now points to the selected SharePoint list.',
+              variant: 'success'
+          });
       } catch (e) {
           console.error(e);
-          alert("Failed to update target list");
+          showToast({
+              title: 'Target list update failed',
+              description: getErrorMessage(e, 'Failed to update target list'),
+              variant: 'error'
+          });
       }
   };
 

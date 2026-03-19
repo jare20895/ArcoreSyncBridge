@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Save, X, ArrowRight, ArrowLeft, ArrowRightLeft, Shield } from 'lucide-react';
+import { useToast } from './ui/ToastProvider';
+import { useConfirmDialog } from './ui/ConfirmDialogProvider';
+import { getErrorMessage } from '../lib/errors';
 
 interface FieldMapping {
   id?: string;
@@ -62,6 +65,8 @@ export default function FieldMappingEditor({
   onSave,
   readonly = false
 }: FieldMappingEditorProps) {
+  const { showToast } = useToast();
+  const { confirm } = useConfirmDialog();
   const [mappings, setMappings] = useState<FieldMapping[]>(initialMappings);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
@@ -85,7 +90,11 @@ export default function FieldMappingEditor({
 
   const handleAdd = () => {
     if (!newMapping.source_column_name || !newMapping.target_column_name) {
-      alert('Please select both source and target columns');
+      showToast({
+        title: 'Missing mapping fields',
+        description: 'Select both a source column and a target column before adding a mapping.',
+        variant: 'error'
+      });
       return;
     }
 
@@ -120,11 +129,19 @@ export default function FieldMappingEditor({
     });
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('Delete this field mapping?')) {
-      setMappings(mappings.filter(m => m.id !== id));
-      setHasChanges(true);
+  const handleDelete = async (id: string) => {
+    const confirmed = await confirm({
+      title: 'Delete field mapping?',
+      description: 'This removes the mapping from the current sync definition.',
+      confirmLabel: 'Delete mapping',
+      tone: 'danger'
+    });
+    if (!confirmed) {
+      return;
     }
+
+    setMappings(mappings.filter(m => m.id !== id));
+    setHasChanges(true);
   };
 
   const handleEdit = (mapping: FieldMapping, field: keyof FieldMapping, value: any) => {
@@ -141,7 +158,11 @@ export default function FieldMappingEditor({
       setHasChanges(false);
       setEditingId(null);
     } catch (err) {
-      alert('Failed to save mappings');
+      showToast({
+        title: 'Save failed',
+        description: getErrorMessage(err, 'Failed to save mappings'),
+        variant: 'error'
+      });
     } finally {
       setSaving(false);
     }
