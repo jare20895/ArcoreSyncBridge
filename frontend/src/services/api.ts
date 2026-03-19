@@ -266,6 +266,11 @@ export const resetSyncCursors = async (syncDefId: string) => {
   return res.data;
 };
 
+export const getCurrentUser = async (): Promise<any> => {
+  const res = await api.get('/auth/me');
+  return unwrapData<any>(res.data);
+};
+
 export const getSyncRuns = async () => {
   const res = await api.get('/runs/');
   return res.data;

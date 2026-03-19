@@ -2,6 +2,7 @@ import React, { ReactNode, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { cn } from '../lib/utils';
+import { getCurrentUser } from '../services/api';
 import { 
   LayoutDashboard, 
   Database, 
@@ -49,6 +50,7 @@ export default function Layout({ children }: LayoutProps) {
   });
 
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [principal, setPrincipal] = useState<{ email: string; role: string; auth_mode: string } | null>(null);
 
   useEffect(() => {
     // Check local storage or system preference
@@ -59,6 +61,12 @@ export default function Layout({ children }: LayoutProps) {
       setIsDarkMode(false);
       document.documentElement.classList.remove('dark');
     }
+  }, []);
+
+  useEffect(() => {
+    getCurrentUser()
+      .then(setPrincipal)
+      .catch(() => setPrincipal(null));
   }, []);
 
   const toggleDarkMode = () => {
@@ -112,6 +120,19 @@ export default function Layout({ children }: LayoutProps) {
 
         {/* Right: Utilities */}
         <div className="flex items-center space-x-4 w-64 justify-end">
+          {principal && (
+            <div
+              className="hidden lg:flex flex-col items-end rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-right"
+              title={`${principal.email} (${principal.auth_mode})`}
+            >
+              <span className="text-[11px] uppercase tracking-wide text-light-text-secondary dark:text-dark-text-secondary">
+                {principal.role}
+              </span>
+              <span className="max-w-[140px] truncate text-xs text-light-text-primary dark:text-dark-text-primary">
+                {principal.email}
+              </span>
+            </div>
+          )}
           <button 
             onClick={toggleDarkMode}
             className="p-2 text-light-text-secondary hover:text-light-primary dark:text-gray-400 dark:hover:text-white transition-colors"

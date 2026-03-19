@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:3005"
     ENABLE_TOKEN_DEBUG_ENDPOINT: bool = False
+    AUTH_MODE: str = "disabled"
+    AUTH_HEADER_EMAIL: str = "X-User-Email"
+    AUTH_HEADER_ROLE: str = "X-User-Role"
+    AUTH_DISABLED_ROLE: str = "platform_admin"
 
     @property
     def cors_allowed_origins(self) -> list[str]:
