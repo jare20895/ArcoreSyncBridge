@@ -4,6 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
+from app.core.config import settings
 
 from app.db.base import Base
 from app.main import app
@@ -113,3 +114,53 @@ def test_delete_database_instance():
     
     get_res = client.get(f"/api/v1/database-instances/{instance_id}")
     assert get_res.status_code == 404
+
+
+def test_create_database_instance_requires_editor_role_in_header_mode(monkeypatch):
+    monkeypatch.setattr(settings, "AUTH_MODE", "header")
+    monkeypatch.setattr(settings, "AUTH_HEADER_EMAIL", "X-User-Email")
+    monkeypatch.setattr(settings, "AUTH_HEADER_ROLE", "X-User-Role")
+
+    response = client.post(
+        "/api/v1/database-instances/",
+        json={
+            "instance_label": "auth-db-1",
+            "host": "localhost",
+            "port": 5432,
+            "role": "PRIMARY",
+            "priority": 1,
+            "status": "ACTIVE"
+        },
+        headers={
+            "X-User-Email": "viewer@example.com",
+            "X-User-Role": "viewer",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "You do not have permission to perform this action"
+
+
+def test_create_database_instance_allows_editor_role_in_header_mode(monkeypatch):
+    monkeypatch.setattr(settings, "AUTH_MODE", "header")
+    monkeypatch.setattr(settings, "AUTH_HEADER_EMAIL", "X-User-Email")
+    monkeypatch.setattr(settings, "AUTH_HEADER_ROLE", "X-User-Role")
+
+    response = client.post(
+        "/api/v1/database-instances/",
+        json={
+            "instance_label": "auth-db-2",
+            "host": "localhost",
+            "port": 5432,
+            "role": "PRIMARY",
+            "priority": 1,
+            "status": "ACTIVE"
+        },
+        headers={
+            "X-User-Email": "editor@example.com",
+            "X-User-Role": "editor",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["data"]["instance_label"] == "auth-db-2"

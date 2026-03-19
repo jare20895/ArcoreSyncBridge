@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.api.responses import success_response
+from app.core.security import EDITOR_ROLES, require_roles
 from app.models.core import SharePointConnection
 from app.schemas.api import ApiResponse, MessageResponse
 from app.schemas.sharepoint_connection import (
@@ -20,6 +21,7 @@ router = APIRouter()
 def create_connection(
     connection: SharePointConnectionCreate,
     request: Request,
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     db_conn = SharePointConnection(**connection.model_dump())
@@ -59,6 +61,7 @@ def update_connection(
     connection_id: UUID,
     connection_update: SharePointConnectionUpdate,
     request: Request,
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     db_conn = db.get(SharePointConnection, connection_id)
@@ -81,6 +84,7 @@ def update_connection(
 def delete_connection(
     connection_id: UUID,
     request: Request,
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     db_conn = db.get(SharePointConnection, connection_id)

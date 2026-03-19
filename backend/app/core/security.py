@@ -5,6 +5,11 @@ from pydantic import BaseModel, EmailStr
 
 from app.core.config import settings
 
+VIEWER_ROLES = ("viewer", "operator", "editor", "admin", "platform_admin")
+EDITOR_ROLES = ("editor", "admin", "platform_admin")
+OPERATOR_ROLES = ("operator", "admin", "platform_admin")
+ADMIN_ROLES = ("admin", "platform_admin")
+
 
 class Principal(BaseModel):
     email: str

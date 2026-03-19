@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
+from app.core.security import OPERATOR_ROLES, require_roles
 from app.db.session import SessionLocal
 from app.models.core import SyncDefinition, SyncSource, DatabaseInstance
 
@@ -27,6 +28,7 @@ def get_cdc_manager(request: Request):
 @router.post("/{sync_def_id}/enable-cdc")
 def enable_cdc(
     sync_def_id: UUID,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
     cdc_manager = Depends(get_cdc_manager)
 ):
@@ -107,7 +109,11 @@ def enable_cdc(
 
 
 @router.post("/{sync_def_id}/disable-cdc")
-def disable_cdc(sync_def_id: UUID, db: Session = Depends(get_db)):
+def disable_cdc(
+    sync_def_id: UUID,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    db: Session = Depends(get_db),
+):
     """
     Disable CDC for a sync definition.
 

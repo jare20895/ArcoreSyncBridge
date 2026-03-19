@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.api.responses import success_response
 from app.api.endpoints.database_instances import get_db
+from app.core.security import EDITOR_ROLES, require_roles
 from app.models.core import SyncDefinition, SyncSource, SyncTarget, SyncKeyColumn, FieldMapping
 from app.models.inventory import DatabaseTable, TableColumn, SharePointList, SharePointColumn
 from app.schemas.api import ApiResponse, MessageResponse
@@ -21,6 +22,7 @@ router = APIRouter()
 def create_sync_definition(
     def_in: SyncDefinitionCreate,
     request: Request,
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     # 1. Create Parent
@@ -172,6 +174,7 @@ def update_sync_definition(
     def_id: UUID,
     def_in: SyncDefinitionUpdate,
     request: Request,
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     db_def = db.get(SyncDefinition, def_id)
@@ -190,6 +193,7 @@ def update_sync_definition(
 def delete_sync_definition(
     def_id: UUID,
     request: Request,
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     db_def = db.get(SyncDefinition, def_id)

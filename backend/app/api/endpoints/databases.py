@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.responses import success_response
+from app.core.security import EDITOR_ROLES, require_roles
 from app.db.session import get_db
 from app.models.inventory import Database
 from app.schemas.api import ApiResponse, MessageResponse
@@ -41,7 +42,12 @@ def get_database(database_id: UUID, request: Request, db: Session = Depends(get_
 
 
 @router.post("/", response_model=ApiResponse[DatabaseResponse], status_code=201)
-def create_database(database_data: DatabaseCreate, request: Request, db: Session = Depends(get_db)):
+def create_database(
+    database_data: DatabaseCreate,
+    request: Request,
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    db: Session = Depends(get_db),
+):
     """Create a new database."""
     database = Database(**database_data.model_dump())
     db.add(database)
@@ -55,7 +61,8 @@ def update_database(
     database_id: UUID,
     database_data: DatabaseUpdate,
     request: Request,
-    db: Session = Depends(get_db)
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    db: Session = Depends(get_db),
 ):
     """Update an existing database."""
     database = db.get(Database, database_id)
@@ -73,7 +80,12 @@ def update_database(
 
 
 @router.delete("/{database_id}", response_model=ApiResponse[MessageResponse])
-def delete_database(database_id: UUID, request: Request, db: Session = Depends(get_db)):
+def delete_database(
+    database_id: UUID,
+    request: Request,
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    db: Session = Depends(get_db),
+):
     """Delete a database."""
     database = db.get(Database, database_id)
     if not database:

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, text
 
 from app.api.responses import success_response
+from app.core.security import EDITOR_ROLES, OPERATOR_ROLES, require_roles
 from app.db.base import Base
 # In a real app, we would use a get_db dependency
 # For now, I'll mock the DB session or create a basic one if needed.
@@ -29,6 +30,7 @@ router = APIRouter()
 def create_database_instance(
     instance: DatabaseInstanceCreate,
     request: Request,
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     db_instance = DatabaseInstance(**instance.model_dump())
@@ -68,6 +70,7 @@ def update_database_instance(
     instance_id: UUID,
     instance_update: DatabaseInstanceUpdate,
     request: Request,
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     db_instance = db.get(DatabaseInstance, instance_id)
@@ -90,6 +93,7 @@ def update_database_instance(
 def delete_database_instance(
     instance_id: UUID,
     request: Request,
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     db_instance = db.get(DatabaseInstance, instance_id)
@@ -102,7 +106,8 @@ def delete_database_instance(
 
 @router.post("/test-connection", response_model=ConnectionTestResult)
 def test_connection_raw(
-    connection: ConnectionTestRequest
+    connection: ConnectionTestRequest,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
 ):
     """
     Test database connection with provided credentials (before creating instance).
@@ -128,6 +133,7 @@ def test_connection_raw(
 @router.post("/{instance_id}/test-connection", response_model=ConnectionTestResult)
 def test_connection(
     instance_id: UUID,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     """
@@ -166,6 +172,7 @@ def test_connection(
 def get_instance_schema(
     instance_id: UUID,
     schema: str = "public",
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     db_instance = db.get(DatabaseInstance, instance_id)

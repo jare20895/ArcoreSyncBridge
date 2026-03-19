@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.api.responses import success_response
 from app.api.endpoints.database_instances import get_db
+from app.core.security import EDITOR_ROLES, require_roles
 from app.models.core import FieldMapping, SyncDefinition
 from app.schemas.api import ApiResponse, MessageResponse
 from app.schemas.sync_definition import FieldMappingCreate, FieldMappingRead
@@ -17,6 +18,7 @@ def create_field_mapping(
     mapping_in: FieldMappingCreate,
     sync_def_id: UUID,
     request: Request,
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     """Create a new field mapping for a sync definition."""
@@ -72,6 +74,7 @@ def update_field_mapping(
     mapping_id: UUID,
     mapping_in: FieldMappingCreate,
     request: Request,
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     """Update an existing field mapping."""
@@ -96,6 +99,7 @@ def update_field_mapping(
 def delete_field_mapping(
     mapping_id: UUID,
     request: Request,
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     """Delete a field mapping."""
@@ -112,6 +116,7 @@ def bulk_update_field_mappings(
     sync_def_id: UUID,
     mappings_in: List[FieldMappingCreate],
     request: Request,
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     """

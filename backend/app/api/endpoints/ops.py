@@ -10,6 +10,7 @@ from app.services.drift import DriftService
 from app.services.failover import FailoverService
 from app.services.synchronizer import Synchronizer
 from app.services.pusher import Pusher
+from app.core.security import ADMIN_ROLES, OPERATOR_ROLES, require_roles
 from app.models.core import SyncDefinition, SyncCursor, SyncRun
 
 router = APIRouter()
@@ -17,6 +18,7 @@ router = APIRouter()
 @router.post("/drift-report", response_model=DriftReportResponse)
 def generate_drift_report(
     request: DriftReportRequest,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     service = DriftService(db)
@@ -31,6 +33,7 @@ def generate_drift_report(
 @router.post("/failover", response_model=FailoverResponse)
 def trigger_failover(
     request: FailoverRequest,
+    _: None = Depends(require_roles(*ADMIN_ROLES)),
     db: Session = Depends(get_db)
 ):
     service = FailoverService(db)
@@ -42,7 +45,11 @@ def trigger_failover(
         raise HTTPException(status_code=500, detail=f"Failover failed: {str(e)}")
 
 @router.post("/sync/{sync_def_id}")
-def trigger_sync(sync_def_id: UUID, db: Session = Depends(get_db)):
+def trigger_sync(
+    sync_def_id: UUID,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    db: Session = Depends(get_db),
+):
     """
     Triggers a sync run (Push and/or Ingress) based on the definition's mode.
     Runs synchronously for immediate feedback.
@@ -126,7 +133,11 @@ def trigger_sync(sync_def_id: UUID, db: Session = Depends(get_db)):
     return results
 
 @router.post("/ingress/{sync_def_id}")
-def trigger_ingress(sync_def_id: UUID, db: Session = Depends(get_db)):
+def trigger_ingress(
+    sync_def_id: UUID,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    db: Session = Depends(get_db),
+):
     service = Synchronizer(db)
     try:
         return service.run_ingress(sync_def_id)
@@ -136,7 +147,11 @@ def trigger_ingress(sync_def_id: UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Ingress failed: {str(e)}")
 
 @router.delete("/sync/{sync_def_id}/cursors")
-def reset_cursors(sync_def_id: UUID, db: Session = Depends(get_db)):
+def reset_cursors(
+    sync_def_id: UUID,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    db: Session = Depends(get_db),
+):
     """
     Deletes all sync cursors for a sync definition.
     This forces the next sync to start from the beginning (all rows).

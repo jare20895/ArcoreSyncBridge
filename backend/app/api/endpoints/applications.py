@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.responses import success_response
+from app.core.security import EDITOR_ROLES, require_roles
 from app.db.session import get_db
 from app.models.inventory import Application
 from app.schemas.api import ApiResponse, MessageResponse
@@ -32,7 +33,12 @@ def get_application(application_id: UUID, request: Request, db: Session = Depend
 
 
 @router.post("/", response_model=ApiResponse[ApplicationResponse], status_code=201)
-def create_application(application_data: ApplicationCreate, request: Request, db: Session = Depends(get_db)):
+def create_application(
+    application_data: ApplicationCreate,
+    request: Request,
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    db: Session = Depends(get_db),
+):
     """Create a new application."""
     application = Application(**application_data.model_dump())
     db.add(application)
@@ -46,7 +52,8 @@ def update_application(
     application_id: UUID,
     application_data: ApplicationUpdate,
     request: Request,
-    db: Session = Depends(get_db)
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    db: Session = Depends(get_db),
 ):
     """Update an existing application."""
     application = db.get(Application, application_id)
@@ -64,7 +71,12 @@ def update_application(
 
 
 @router.delete("/{application_id}", response_model=ApiResponse[MessageResponse])
-def delete_application(application_id: UUID, request: Request, db: Session = Depends(get_db)):
+def delete_application(
+    application_id: UUID,
+    request: Request,
+    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    db: Session = Depends(get_db),
+):
     """Delete an application."""
     application = db.get(Application, application_id)
     if not application:

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
+from app.core.security import OPERATOR_ROLES, require_roles
 from app.db.session import SessionLocal
 from app.services.schedule_service import ScheduleService
 from app.services.schedule_audit import ScheduleAuditService
@@ -53,6 +54,7 @@ class AuditLogResponse(BaseModel):
 def enable_schedule(
     sync_def_id: UUID,
     config: ScheduleConfig,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     """Enable scheduled sync for a sync definition."""
@@ -70,7 +72,11 @@ def enable_schedule(
 
 
 @router.post("/{sync_def_id}/disable", response_model=ScheduleResponse)
-def disable_schedule(sync_def_id: UUID, db: Session = Depends(get_db)):
+def disable_schedule(
+    sync_def_id: UUID,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    db: Session = Depends(get_db),
+):
     """Disable scheduled sync for a sync definition."""
     service = ScheduleService(db)
     try:
@@ -80,7 +86,11 @@ def disable_schedule(sync_def_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.delete("/{sync_def_id}")
-def delete_schedule(sync_def_id: UUID, db: Session = Depends(get_db)):
+def delete_schedule(
+    sync_def_id: UUID,
+    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    db: Session = Depends(get_db),
+):
     """Delete schedule for a sync definition."""
     service = ScheduleService(db)
     try:
