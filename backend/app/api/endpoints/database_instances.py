@@ -1,9 +1,10 @@
 from typing import List
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select, text
 
+from app.api.responses import success_response
 from app.db.base import Base
 # In a real app, we would use a get_db dependency
 # For now, I'll mock the DB session or create a basic one if needed.
@@ -17,15 +18,17 @@ from app.schemas.database_instance import (
     ConnectionTestResult,
     ConnectionTestRequest
 )
+from app.schemas.api import ApiResponse, MessageResponse
 from app.schemas.introspection import SchemaSnapshot
 from app.services.introspection import introspect_database
 from app.db.session import get_db
 
 router = APIRouter()
 
-@router.post("/", response_model=DatabaseInstanceRead, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=ApiResponse[DatabaseInstanceRead], status_code=status.HTTP_201_CREATED)
 def create_database_instance(
     instance: DatabaseInstanceCreate,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     db_instance = DatabaseInstance(**instance.model_dump())
@@ -33,35 +36,38 @@ def create_database_instance(
         db.add(db_instance)
         db.commit()
         db.refresh(db_instance)
-        return db_instance
+        return success_response(request, db_instance)
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/", response_model=List[DatabaseInstanceRead])
+@router.get("/", response_model=ApiResponse[List[DatabaseInstanceRead]])
 def list_database_instances(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
     stmt = select(DatabaseInstance).offset(skip).limit(limit)
     result = db.execute(stmt)
-    return result.scalars().all()
+    return success_response(request, result.scalars().all())
 
-@router.get("/{instance_id}", response_model=DatabaseInstanceRead)
+@router.get("/{instance_id}", response_model=ApiResponse[DatabaseInstanceRead])
 def get_database_instance(
     instance_id: UUID,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     db_instance = db.get(DatabaseInstance, instance_id)
     if not db_instance:
         raise HTTPException(status_code=404, detail="Database instance not found")
-    return db_instance
+    return success_response(request, db_instance)
 
-@router.put("/{instance_id}", response_model=DatabaseInstanceRead)
+@router.put("/{instance_id}", response_model=ApiResponse[DatabaseInstanceRead])
 def update_database_instance(
     instance_id: UUID,
     instance_update: DatabaseInstanceUpdate,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     db_instance = db.get(DatabaseInstance, instance_id)
@@ -75,14 +81,15 @@ def update_database_instance(
     try:
         db.commit()
         db.refresh(db_instance)
-        return db_instance
+        return success_response(request, db_instance)
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.delete("/{instance_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{instance_id}", response_model=ApiResponse[MessageResponse])
 def delete_database_instance(
     instance_id: UUID,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     db_instance = db.get(DatabaseInstance, instance_id)
@@ -91,7 +98,7 @@ def delete_database_instance(
 
     db.delete(db_instance)
     db.commit()
-    return None
+    return success_response(request, {"message": "Database instance deleted"})
 
 @router.post("/test-connection", response_model=ConnectionTestResult)
 def test_connection_raw(

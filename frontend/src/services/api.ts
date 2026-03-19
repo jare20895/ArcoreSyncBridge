@@ -6,78 +6,93 @@ const api = axios.create({
   baseURL: `${API_URL}/api/v1`,
 });
 
-// Applications
-export const getApplications = async () => {
-  const res = await api.get('/applications/');
-  return res.data;
+const unwrapData = <T>(payload: any): T => {
+  if (payload && typeof payload === 'object' && 'data' in payload && 'meta' in payload) {
+    return payload.data as T;
+  }
+  return payload as T;
 };
 
-export const getApplication = async (id: string) => {
+api.interceptors.response.use((response) => {
+  const requestId = response.headers['x-request-id'];
+  if (requestId && response.data && typeof response.data === 'object' && 'meta' in response.data) {
+    response.data.meta = { ...response.data.meta, request_id: response.data.meta?.request_id || requestId };
+  }
+  return response;
+});
+
+// Applications
+export const getApplications = async (): Promise<any[]> => {
+  const res = await api.get('/applications/');
+  return unwrapData<any[]>(res.data);
+};
+
+export const getApplication = async (id: string): Promise<any> => {
   const res = await api.get(`/applications/${id}`);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 export const createApplication = async (data: any) => {
   const res = await api.post('/applications/', data);
-  return res.data;
+  return unwrapData(res.data);
 };
 
 export const updateApplication = async (id: string, data: any) => {
   const res = await api.put(`/applications/${id}`, data);
-  return res.data;
+  return unwrapData(res.data);
 };
 
 export const deleteApplication = async (id: string) => {
   const res = await api.delete(`/applications/${id}`);
-  return res.data;
+  return unwrapData(res.data);
 };
 
 // Databases
-export const getDatabases = async (applicationId?: string) => {
+export const getDatabases = async (applicationId?: string): Promise<any[]> => {
   const params = applicationId ? { application_id: applicationId } : {};
   const res = await api.get('/databases/', { params });
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
-export const getDatabase = async (id: string) => {
+export const getDatabase = async (id: string): Promise<any> => {
   const res = await api.get(`/databases/${id}`);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 export const createDatabase = async (data: any) => {
   const res = await api.post('/databases/', data);
-  return res.data;
+  return unwrapData(res.data);
 };
 
 export const updateDatabase = async (id: string, data: any) => {
   const res = await api.put(`/databases/${id}`, data);
-  return res.data;
+  return unwrapData(res.data);
 };
 
 export const deleteDatabase = async (id: string) => {
   const res = await api.delete(`/databases/${id}`);
-  return res.data;
+  return unwrapData(res.data);
 };
 
 // Database Instances
-export const getDatabaseInstances = async () => {
+export const getDatabaseInstances = async (): Promise<any[]> => {
   const res = await api.get('/database-instances/');
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
 export const createDatabaseInstance = async (data: any) => {
   const res = await api.post('/database-instances/', data);
-  return res.data;
+  return unwrapData(res.data);
 };
 
 export const updateDatabaseInstance = async (id: string, data: any) => {
   const res = await api.put(`/database-instances/${id}`, data);
-  return res.data;
+  return unwrapData(res.data);
 };
 
 export const deleteDatabaseInstance = async (id: string) => {
   const res = await api.delete(`/database-instances/${id}`);
-  return res.data;
+  return unwrapData(res.data);
 };
 
 export const testDatabaseConnection = async (data: any) => {

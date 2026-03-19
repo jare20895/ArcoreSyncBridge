@@ -9,6 +9,13 @@ def test_health_check():
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "service": "arcore-syncbridge"}
 
+
+def test_readiness_check():
+    response = client.get("/ready")
+    assert response.status_code in {200, 503}
+    assert response.json()["service"] == "arcore-syncbridge"
+    assert response.json()["status"] in {"ready", "not_ready"}
+
 def test_root():
     response = client.get("/")
     assert response.status_code == 200

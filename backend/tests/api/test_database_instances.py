@@ -52,14 +52,15 @@ def test_create_database_instance():
     )
     assert response.status_code == 201
     data = response.json()
-    assert data["instance_label"] == "test-db-1"
-    assert "id" in data
+    assert data["meta"]["request_id"]
+    assert data["data"]["instance_label"] == "test-db-1"
+    assert "id" in data["data"]
 
 def test_read_database_instances():
     response = client.get("/api/v1/database-instances/")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) > 0
+    assert len(data["data"]) > 0
 
 def test_read_database_instance():
     # Create one first
@@ -71,11 +72,11 @@ def test_read_database_instance():
             "port": 5432
         },
     )
-    instance_id = create_res.json()["id"]
+    instance_id = create_res.json()["data"]["id"]
     
     response = client.get(f"/api/v1/database-instances/{instance_id}")
     assert response.status_code == 200
-    assert response.json()["instance_label"] == "test-db-read"
+    assert response.json()["data"]["instance_label"] == "test-db-read"
 
 def test_update_database_instance():
     create_res = client.post(
@@ -86,14 +87,14 @@ def test_update_database_instance():
             "port": 5432
         },
     )
-    instance_id = create_res.json()["id"]
+    instance_id = create_res.json()["data"]["id"]
     
     response = client.put(
         f"/api/v1/database-instances/{instance_id}",
         json={"instance_label": "updated-label"}
     )
     assert response.status_code == 200
-    assert response.json()["instance_label"] == "updated-label"
+    assert response.json()["data"]["instance_label"] == "updated-label"
 
 def test_delete_database_instance():
     create_res = client.post(
@@ -104,10 +105,11 @@ def test_delete_database_instance():
             "port": 5432
         },
     )
-    instance_id = create_res.json()["id"]
+    instance_id = create_res.json()["data"]["id"]
     
     response = client.delete(f"/api/v1/database-instances/{instance_id}")
-    assert response.status_code == 204
+    assert response.status_code == 200
+    assert response.json()["data"]["message"] == "Database instance deleted"
     
     get_res = client.get(f"/api/v1/database-instances/{instance_id}")
     assert get_res.status_code == 404

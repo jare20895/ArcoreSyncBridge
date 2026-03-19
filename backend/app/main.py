@@ -3,6 +3,7 @@ import uuid
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqladmin import Admin
@@ -24,6 +25,7 @@ from app.admin import (
     SyncCursorAdmin,
     MoveAuditLogAdmin
 )
+from sqlalchemy import text
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -136,6 +138,19 @@ app.include_router(metrics.router, prefix="/api/v1/metrics", tags=["metrics"])
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "arcore-syncbridge"}
+
+
+@app.get("/ready")
+async def readiness_check():
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "service": "arcore-syncbridge"},
+        )
+    return {"status": "ready", "service": "arcore-syncbridge"}
 
 @app.get("/")
 async def root():
