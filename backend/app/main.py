@@ -9,6 +9,7 @@ from sqladmin import Admin
 
 from app.api.endpoints import database_instances, sharepoint_connections, provisioning, sharepoint_discovery, sync_definitions, moves, ops, replication, runs, applications, databases, data_sources, data_targets, field_mappings, schedules, cdc, health, metrics
 from app.core.config import settings
+from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
 from app.db.session import engine, SessionLocal
 from app.services.cdc_manager import CDCManager
@@ -61,6 +62,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Arcore SyncBridge", version="0.1.0", lifespan=lifespan)
+register_exception_handlers(app)
 
 # Setup SQLAdmin
 admin = Admin(app, engine)
