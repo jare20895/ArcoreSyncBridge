@@ -5,7 +5,7 @@ These models implement the complete DATA_MODEL.md specification.
 import uuid
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import String, Integer, Boolean, ForeignKey, DateTime, Text, BigInteger
+from sqlalchemy import String, Integer, Boolean, ForeignKey, DateTime, Text, BigInteger, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
@@ -41,6 +41,9 @@ class Database(Base):
     Multiple database instances can serve the same logical database.
     """
     __tablename__ = "databases"
+    __table_args__ = (
+        UniqueConstraint("application_id", "name", "environment", name="uq_databases_app_name_env"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     application_id: Mapped[uuid.UUID] = mapped_column(
@@ -69,6 +72,10 @@ class Database(Base):
 class DatabaseTable(Base):
     """Inventory of tables per database."""
     __tablename__ = "database_tables"
+    __table_args__ = (
+        UniqueConstraint("database_id", "schema_name", "table_name", name="uq_database_tables_db_schema_table"),
+        Index("ix_database_tables_database_id", "database_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     database_id: Mapped[uuid.UUID] = mapped_column(
@@ -109,6 +116,10 @@ class DatabaseTable(Base):
 class TableColumn(Base):
     """Detailed column metadata for a selected table."""
     __tablename__ = "table_columns"
+    __table_args__ = (
+        UniqueConstraint("table_id", "column_name", name="uq_table_columns_table_column"),
+        Index("ix_table_columns_table_id", "table_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     table_id: Mapped[uuid.UUID] = mapped_column(
@@ -169,6 +180,9 @@ class TableIndex(Base):
 class SourceTableMetric(Base):
     """Source table metrics captured per database instance."""
     __tablename__ = "source_table_metrics"
+    __table_args__ = (
+        Index("ix_source_table_metrics_table_instance", "table_id", "database_instance_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     table_id: Mapped[uuid.UUID] = mapped_column(
@@ -195,6 +209,9 @@ class SourceTableMetric(Base):
 class SharePointSite(Base):
     """Canonical SharePoint site inventory."""
     __tablename__ = "sharepoint_sites"
+    __table_args__ = (
+        UniqueConstraint("connection_id", "site_id", name="uq_sharepoint_sites_connection_site"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     connection_id: Mapped[uuid.UUID] = mapped_column(
@@ -219,6 +236,10 @@ class SharePointSite(Base):
 class SharePointList(Base):
     """Target lists, either selected or provisioned."""
     __tablename__ = "sharepoint_lists"
+    __table_args__ = (
+        UniqueConstraint("site_id", "list_id", name="uq_sharepoint_lists_site_list"),
+        Index("ix_sharepoint_lists_source_table_id", "source_table_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     site_id: Mapped[uuid.UUID] = mapped_column(
@@ -252,6 +273,10 @@ class SharePointList(Base):
 class SharePointColumn(Base):
     """List column metadata for mapping."""
     __tablename__ = "sharepoint_columns"
+    __table_args__ = (
+        UniqueConstraint("list_id", "column_name", name="uq_sharepoint_columns_list_column"),
+        Index("ix_sharepoint_columns_list_id", "list_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     list_id: Mapped[uuid.UUID] = mapped_column(
@@ -270,6 +295,9 @@ class SharePointColumn(Base):
 class TargetListMetric(Base):
     """SharePoint list metrics captured per list."""
     __tablename__ = "target_list_metrics"
+    __table_args__ = (
+        Index("ix_target_list_metrics_target_list_id", "target_list_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     target_list_id: Mapped[uuid.UUID] = mapped_column(
@@ -291,6 +319,9 @@ class TargetListMetric(Base):
 class IntrospectionRun(Base):
     """Tracks each metadata extraction run per database."""
     __tablename__ = "introspection_runs"
+    __table_args__ = (
+        Index("ix_introspection_runs_instance_started", "database_instance_id", "started_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     database_instance_id: Mapped[uuid.UUID] = mapped_column(
@@ -309,6 +340,9 @@ class IntrospectionRun(Base):
 class SchemaSnapshot(Base):
     """Snapshots of table metadata for drift detection."""
     __tablename__ = "schema_snapshots"
+    __table_args__ = (
+        Index("ix_schema_snapshots_table_instance", "table_id", "database_instance_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     table_id: Mapped[uuid.UUID] = mapped_column(
@@ -332,6 +366,10 @@ class SchemaSnapshot(Base):
 class SyncMetric(Base):
     """Rollup metrics per sync definition and target list."""
     __tablename__ = "sync_metrics"
+    __table_args__ = (
+        Index("ix_sync_metrics_sync_def_id", "sync_def_id"),
+        Index("ix_sync_metrics_reconcile_status", "reconcile_status"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     sync_def_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
@@ -350,6 +388,10 @@ class SyncMetric(Base):
 class SyncEvent(Base):
     """Events logged during sync runs."""
     __tablename__ = "sync_events"
+    __table_args__ = (
+        Index("ix_sync_events_sync_run_id", "sync_run_id"),
+        Index("ix_sync_events_severity_created", "severity", "created_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     sync_run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)

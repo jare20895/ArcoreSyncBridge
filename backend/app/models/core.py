@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import String, Integer, Boolean, ForeignKey, DateTime, JSON
+from sqlalchemy import String, Integer, Boolean, ForeignKey, DateTime, JSON, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
@@ -76,6 +76,9 @@ class DatabaseInstance(Base):
 
 class SharePointConnection(Base):
     __tablename__ = "sharepoint_connections"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "client_id", name="uq_sharepoint_connections_tenant_client"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(String)
@@ -197,6 +200,15 @@ class SyncKeyColumn(Base):
 
 class FieldMapping(Base):
     __tablename__ = "field_mappings"
+    __table_args__ = (
+        UniqueConstraint(
+            "sync_def_id",
+            "source_column_id",
+            "target_column_id",
+            name="uq_field_mappings_sync_source_target",
+        ),
+        Index("ix_field_mappings_sync_def_id", "sync_def_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id", ondelete="CASCADE"))
@@ -224,6 +236,9 @@ class FieldMapping(Base):
 
 class SyncCursor(Base):
     __tablename__ = "sync_cursors"
+    __table_args__ = (
+        Index("ix_sync_cursors_sync_scope_updated", "sync_def_id", "cursor_scope", "updated_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     sync_def_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sync_definitions.id", ondelete="CASCADE"))
@@ -239,6 +254,9 @@ class SyncCursor(Base):
 
 class SyncLedgerEntry(Base):
     __tablename__ = "sync_ledger"
+    __table_args__ = (
+        Index("ix_sync_ledger_sync_source_instance", "sync_def_id", "source_instance_id"),
+    )
 
     sync_def_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     source_identity_hash: Mapped[str] = mapped_column(String, primary_key=True) # SHA256
