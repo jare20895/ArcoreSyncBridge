@@ -1,12 +1,14 @@
 from typing import List
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
+from app.api.responses import success_response
 from app.api.endpoints.database_instances import get_db
 from app.models.core import SyncDefinition, SyncSource, SyncTarget, SyncKeyColumn, FieldMapping
 from app.models.inventory import DatabaseTable, TableColumn, SharePointList, SharePointColumn
+from app.schemas.api import ApiResponse, MessageResponse
 from app.schemas.sync_definition import (
     SyncDefinitionCreate,
     SyncDefinitionRead,
@@ -15,9 +17,10 @@ from app.schemas.sync_definition import (
 
 router = APIRouter()
 
-@router.post("/", response_model=SyncDefinitionRead, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=ApiResponse[SyncDefinitionRead], status_code=status.HTTP_201_CREATED)
 def create_sync_definition(
     def_in: SyncDefinitionCreate,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     # 1. Create Parent
@@ -93,13 +96,15 @@ def create_sync_definition(
     try:
         db.commit()
         db.refresh(db_def)
-        return db_def
+        model = SyncDefinitionRead.model_validate(db_def)
+        return success_response(request, model)
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/", response_model=List[SyncDefinitionRead])
+@router.get("/", response_model=ApiResponse[List[SyncDefinitionRead]])
 def list_sync_definitions(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db)
@@ -131,11 +136,12 @@ def list_sync_definitions(
             
         enriched.append(model)
         
-    return enriched
+    return success_response(request, enriched)
 
-@router.get("/{def_id}", response_model=SyncDefinitionRead)
+@router.get("/{def_id}", response_model=ApiResponse[SyncDefinitionRead])
 def get_sync_definition(
     def_id: UUID,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     db_def = db.get(SyncDefinition, def_id)
@@ -159,12 +165,13 @@ def get_sync_definition(
         else:
             model.source_table_name_resolved = "Unknown Table"
 
-    return model
+    return success_response(request, model)
 
-@router.put("/{def_id}", response_model=SyncDefinitionRead)
+@router.put("/{def_id}", response_model=ApiResponse[SyncDefinitionRead])
 def update_sync_definition(
     def_id: UUID,
     def_in: SyncDefinitionUpdate,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     db_def = db.get(SyncDefinition, def_id)
@@ -177,11 +184,12 @@ def update_sync_definition(
     
     db.commit()
     db.refresh(db_def)
-    return db_def
+    return success_response(request, SyncDefinitionRead.model_validate(db_def))
 
-@router.delete("/{def_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{def_id}", response_model=ApiResponse[MessageResponse])
 def delete_sync_definition(
     def_id: UUID,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     db_def = db.get(SyncDefinition, def_id)
@@ -190,4 +198,4 @@ def delete_sync_definition(
     
     db.delete(db_def)
     db.commit()
-    return None
+    return success_response(request, {"message": "Sync definition deleted"})

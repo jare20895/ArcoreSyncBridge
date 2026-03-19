@@ -133,19 +133,19 @@ export const provisionSharePointList = async (data: any) => {
   return res.data;
 };
 
-export const getConnections = async () => {
+export const getConnections = async (): Promise<any[]> => {
   const res = await api.get('/sharepoint-connections/');
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
-export const createConnection = async (data: any) => {
+export const createConnection = async (data: any): Promise<any> => {
   const res = await api.post('/sharepoint-connections/', data);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
-export const updateConnection = async (id: string, data: any) => {
+export const updateConnection = async (id: string, data: any): Promise<any> => {
   const res = await api.put(`/sharepoint-connections/${id}`, data);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 // Data Targets (SharePoint Inventory)
@@ -195,55 +195,55 @@ export const extractSharePointColumns = async (listId: string) => {
   return res.data;
 };
 
-export const getSyncDefinitions = async () => {
+export const getSyncDefinitions = async (): Promise<any[]> => {
   const res = await api.get('/sync-definitions/');
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
-export const getSyncDefinition = async (id: string) => {
+export const getSyncDefinition = async (id: string): Promise<any> => {
   const res = await api.get(`/sync-definitions/${id}`);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
-export const createSyncDefinition = async (data: any) => {
+export const createSyncDefinition = async (data: any): Promise<any> => {
   const res = await api.post('/sync-definitions/', data);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
-export const updateSyncDefinition = async (id: string, data: any) => {
+export const updateSyncDefinition = async (id: string, data: any): Promise<any> => {
   const res = await api.put(`/sync-definitions/${id}`, data);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
-export const deleteSyncDefinition = async (id: string) => {
+export const deleteSyncDefinition = async (id: string): Promise<any> => {
   const res = await api.delete(`/sync-definitions/${id}`);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 // Field Mappings
-export const getFieldMappings = async (syncDefId: string) => {
+export const getFieldMappings = async (syncDefId: string): Promise<any[]> => {
   const res = await api.get(`/field-mappings/sync-definition/${syncDefId}`);
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
-export const createFieldMapping = async (syncDefId: string, data: any) => {
+export const createFieldMapping = async (syncDefId: string, data: any): Promise<any> => {
   const res = await api.post(`/field-mappings/?sync_def_id=${syncDefId}`, data);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
-export const updateFieldMapping = async (mappingId: string, data: any) => {
+export const updateFieldMapping = async (mappingId: string, data: any): Promise<any> => {
   const res = await api.put(`/field-mappings/${mappingId}`, data);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
-export const deleteFieldMapping = async (mappingId: string) => {
+export const deleteFieldMapping = async (mappingId: string): Promise<any> => {
   const res = await api.delete(`/field-mappings/${mappingId}`);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
-export const bulkUpdateFieldMappings = async (syncDefId: string, mappings: any[]) => {
+export const bulkUpdateFieldMappings = async (syncDefId: string, mappings: any[]): Promise<any[]> => {
   const res = await api.post(`/field-mappings/sync-definition/${syncDefId}/bulk`, mappings);
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
 export const generateDriftReport = async (data: { sync_def_id: string, check_type: string }) => {

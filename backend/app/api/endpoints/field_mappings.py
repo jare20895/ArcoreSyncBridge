@@ -1,19 +1,22 @@
 from typing import List
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
+from app.api.responses import success_response
 from app.api.endpoints.database_instances import get_db
 from app.models.core import FieldMapping, SyncDefinition
+from app.schemas.api import ApiResponse, MessageResponse
 from app.schemas.sync_definition import FieldMappingCreate, FieldMappingRead
 
 router = APIRouter()
 
-@router.post("/", response_model=FieldMappingRead, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=ApiResponse[FieldMappingRead], status_code=status.HTTP_201_CREATED)
 def create_field_mapping(
     mapping_in: FieldMappingCreate,
     sync_def_id: UUID,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """Create a new field mapping for a sync definition."""
@@ -32,14 +35,15 @@ def create_field_mapping(
     try:
         db.commit()
         db.refresh(db_mapping)
-        return db_mapping
+        return success_response(request, db_mapping)
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/sync-definition/{sync_def_id}", response_model=List[FieldMappingRead])
+@router.get("/sync-definition/{sync_def_id}", response_model=ApiResponse[List[FieldMappingRead]])
 def list_field_mappings_by_sync_def(
     sync_def_id: UUID,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """Get all field mappings for a specific sync definition."""
@@ -49,23 +53,25 @@ def list_field_mappings_by_sync_def(
 
     stmt = select(FieldMapping).where(FieldMapping.sync_def_id == sync_def_id)
     mappings = db.execute(stmt).scalars().all()
-    return mappings
+    return success_response(request, mappings)
 
-@router.get("/{mapping_id}", response_model=FieldMappingRead)
+@router.get("/{mapping_id}", response_model=ApiResponse[FieldMappingRead])
 def get_field_mapping(
     mapping_id: UUID,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """Get a specific field mapping by ID."""
     db_mapping = db.get(FieldMapping, mapping_id)
     if not db_mapping:
         raise HTTPException(status_code=404, detail="Field mapping not found")
-    return db_mapping
+    return success_response(request, db_mapping)
 
-@router.put("/{mapping_id}", response_model=FieldMappingRead)
+@router.put("/{mapping_id}", response_model=ApiResponse[FieldMappingRead])
 def update_field_mapping(
     mapping_id: UUID,
     mapping_in: FieldMappingCreate,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """Update an existing field mapping."""
@@ -81,14 +87,15 @@ def update_field_mapping(
     try:
         db.commit()
         db.refresh(db_mapping)
-        return db_mapping
+        return success_response(request, db_mapping)
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.delete("/{mapping_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{mapping_id}", response_model=ApiResponse[MessageResponse])
 def delete_field_mapping(
     mapping_id: UUID,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """Delete a field mapping."""
@@ -98,12 +105,13 @@ def delete_field_mapping(
 
     db.delete(db_mapping)
     db.commit()
-    return None
+    return success_response(request, {"message": "Field mapping deleted"})
 
-@router.post("/sync-definition/{sync_def_id}/bulk", response_model=List[FieldMappingRead])
+@router.post("/sync-definition/{sync_def_id}/bulk", response_model=ApiResponse[List[FieldMappingRead]])
 def bulk_update_field_mappings(
     sync_def_id: UUID,
     mappings_in: List[FieldMappingCreate],
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -140,7 +148,7 @@ def bulk_update_field_mappings(
         db.commit()
         for mapping in new_mappings:
             db.refresh(mapping)
-        return new_mappings
+        return success_response(request, new_mappings)
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
