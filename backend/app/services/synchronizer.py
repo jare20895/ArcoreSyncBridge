@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 from typing import Optional, List, Dict, Any, Tuple
 from uuid import UUID
 from datetime import datetime
@@ -13,6 +14,9 @@ from app.services.graph import GraphClient
 from app.services.database import DatabaseClient
 from app.services.secrets import resolve_sharepoint_client_secret
 import os
+
+
+logger = logging.getLogger(__name__)
 
 class Synchronizer:
     def __init__(self, db: Session):
@@ -230,7 +234,11 @@ class Synchronizer:
                      if current_source_hash != ledger_entry.content_hash:
                          # Conflict! Source changed. Reject Ingress.
                          # TODO: Log conflict or raise alert
-                         print(f"Conflict detected for {ledger_entry.source_identity}. Source changed. SOURCE_WINS -> Skip Ingress.")
+                         logger.warning(
+                             "ingress_conflict_source_wins source_identity=%s sync_def_id=%s",
+                             ledger_entry.source_identity,
+                             sync_def.id,
+                         )
                          continue
 
                 # Apply Update (DESTINATION_WINS or Source didn't change)

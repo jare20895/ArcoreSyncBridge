@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime, date
@@ -17,6 +18,9 @@ from app.services.secrets import resolve_sharepoint_client_secret
 import os
 
 from app.services.sharding import ShardingEvaluator
+
+
+logger = logging.getLogger(__name__)
 
 class Pusher:
     def __init__(self, db: Session):
@@ -155,9 +159,15 @@ class Pusher:
                  table_name = tbl.table_name
                  schema_name = tbl.schema_name
 
-        print(f"[DEBUG] Fetching changed rows from {schema_name}.{table_name} WHERE {cursor_col} > {last_watermark}")
+        logger.info(
+            "push_fetch_rows schema=%s table=%s cursor_column=%s watermark=%s",
+            schema_name,
+            table_name,
+            cursor_col,
+            last_watermark,
+        )
         rows = db_client.fetch_changed_rows(schema_name, table_name, cursor_col, last_watermark)
-        print(f"[DEBUG] Found {len(rows)} changed rows to process")
+        logger.info("push_rows_loaded count=%s sync_def_id=%s", len(rows), sync_def_id)
 
         processed_count = 0
         max_cursor_seen = last_watermark
@@ -176,7 +186,7 @@ class Pusher:
             # System fields are SharePoint readonly metadata (ID, Created, Modified, etc.)
             # They should never be written to SharePoint, even if accidentally set to BIDIRECTIONAL
             if fm.is_system_field:
-                print(f"[WARN] Skipping system field '{fm.target_column_name}' in push sync (readonly metadata)")
+                logger.warning("push_skip_system_field target_column=%s", fm.target_column_name)
                 continue
 
             if fm.source_column_name and fm.target_column_name:
@@ -184,7 +194,7 @@ class Pusher:
             if fm.is_key and fm.source_column_name:
                 pg_pk_col = fm.source_column_name
 
-        print(f"[DEBUG] Field Mappings: {len(pg_to_sp_map)} fields mapped for PUSH (excluding PULL_ONLY). PK: {pg_pk_col}")
+        logger.info("push_field_mapping_summary mapped_fields=%s primary_key=%s", len(pg_to_sp_map), pg_pk_col)
 
         failed_count = 0
         success_count = 0
@@ -206,7 +216,7 @@ class Pusher:
             
             # If no fields mapped, we can't sync content (unless we just want to create empty placeholders, which is rare)
             if not sp_fields:
-                print(f"[WARN] No fields mapped for row {source_id}. Skipping sync.")
+                logger.warning("push_skip_row_no_mapped_fields source_id=%s", source_id)
                 failed_count += 1
                 continue
 
@@ -228,7 +238,7 @@ class Pusher:
             # Resolve Target Context
             target_obj = target_map.get(target_list_id)
             if not target_obj:
-                print(f"Target list {target_list_id} determined but not found in active targets. Skipping.")
+                logger.error("push_missing_target target_list_id=%s", target_list_id)
                 failed_count += 1
                 continue
 
@@ -237,13 +247,17 @@ class Pusher:
             # This prevents writing to recycled/stale lists if the user hasn't updated the definition
             sp_list_record = self.db.get(SharePointList, target_obj.target_list_id)
             if sp_list_record and sp_list_record.status == 'DELETED':
-                print(f"[ERROR] Target list '{sp_list_record.display_name}' ({target_list_id}) is marked DELETED in inventory. Please update the Sync Definition to point to the new list.")
+                logger.error(
+                    "push_target_deleted target_list_id=%s display_name=%s",
+                    target_list_id,
+                    sp_list_record.display_name,
+                )
                 failed_count += 1
                 continue
 
             # Resolve the actual SharePoint GUID for API calls (not the database UUID)
             if not sp_list_record:
-                print(f"[ERROR] Target list {target_list_id} not found in inventory. Cannot determine SharePoint GUID.")
+                logger.error("push_target_inventory_missing target_list_id=%s", target_list_id)
                 failed_count += 1
                 continue
 
@@ -252,7 +266,7 @@ class Pusher:
             try:
                 content_service, site_id = self._get_content_service(target_obj.sharepoint_connection_id, target_obj.site_id)
             except Exception as e:
-                print(f"Failed to get content service for target {target_list_id}: {e}")
+                logger.exception("push_content_service_resolution_failed target_list_id=%s", target_list_id)
                 failed_count += 1
                 continue
 
@@ -288,7 +302,7 @@ class Pusher:
                         max_cursor_seen = str(row_ts)
                 except Exception as e:
                     # Log error
-                    print(f"Failed to update SP item: {e}")
+                    logger.exception("push_update_failed source_id=%s sp_item_id=%s", source_id, ledger_entry.sp_item_id)
                     failed_count += 1
             else:
                 # Create SP Item
@@ -317,10 +331,10 @@ class Pusher:
                         if str(row_ts) > str(max_cursor_seen if max_cursor_seen else ""):
                             max_cursor_seen = str(row_ts)
                     else:
-                        print(f"Graph API returned no ID for created item. Payload: {sp_fields}")
+                        logger.error("push_create_missing_id source_id=%s payload=%s", source_id, sp_fields)
                         failed_count += 1
                 except Exception as e:
-                     print(f"Failed to create SP item: {e}")
+                     logger.exception("push_create_failed source_id=%s", source_id)
                      failed_count += 1
 
             processed_count += 1

@@ -9,6 +9,7 @@ from sqladmin import Admin
 
 from app.api.endpoints import database_instances, sharepoint_connections, provisioning, sharepoint_discovery, sync_definitions, moves, ops, replication, runs, applications, databases, data_sources, data_targets, field_mappings, schedules, cdc, health, metrics
 from app.core.config import settings
+from app.core.logging import configure_logging
 from app.db.session import engine, SessionLocal
 from app.services.cdc_manager import CDCManager
 from app.admin import (
@@ -23,11 +24,7 @@ from app.admin import (
     MoveAuditLogAdmin
 )
 
-# Configure Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
@@ -92,13 +89,24 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         request.state.request_id = request_id
         start_time = time.time()
         
-        logger.info(f"Request started: {request.method} {request.url.path} [ID: {request_id}]")
+        logger.info(
+            "request_started method=%s path=%s request_id=%s",
+            request.method,
+            request.url.path,
+            request_id,
+        )
         
         response = await call_next(request)
         
         process_time = time.time() - start_time
         response.headers["X-Request-ID"] = request_id
-        logger.info(f"Request completed: {request.method} {request.url.path} [ID: {request_id}] - {process_time:.4f}s")
+        logger.info(
+            "request_completed method=%s path=%s request_id=%s duration_seconds=%.4f",
+            request.method,
+            request.url.path,
+            request_id,
+            process_time,
+        )
         
         return response
 

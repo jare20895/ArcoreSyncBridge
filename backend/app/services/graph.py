@@ -1,7 +1,11 @@
 import time
+import logging
 import requests
 import msal
 from typing import Optional, Tuple, Dict, Any
+
+
+logger = logging.getLogger(__name__)
 
 class GraphClient:
     def __init__(self, tenant_id: str, client_id: str, client_secret: str, authority_host: str = "https://login.microsoftonline.com"):
@@ -46,9 +50,7 @@ class GraphClient:
             "Content-Type": "application/json",
         }
 
-        print(f"[DEBUG] Graph API Request: {method} {url}")
-        if json_body:
-            print(f"[DEBUG] Request Body: {json_body}")
+        logger.debug("graph_request method=%s url=%s has_body=%s", method, url, bool(json_body))
 
         # Basic retry logic for throttling (429) or temporary server errors (503)
         max_retries = 3
@@ -62,9 +64,21 @@ class GraphClient:
                 timeout=30
             )
 
-            print(f"[DEBUG] Response Status: {resp.status_code}")
+            logger.debug(
+                "graph_response method=%s path=%s status_code=%s attempt=%s",
+                method,
+                path,
+                resp.status_code,
+                attempt + 1,
+            )
             if resp.status_code >= 400:
-                print(f"[DEBUG] Error Response: {resp.text}")
+                logger.warning(
+                    "graph_response_error method=%s path=%s status_code=%s body=%s",
+                    method,
+                    path,
+                    resp.status_code,
+                    resp.text,
+                )
 
             if resp.status_code in (429, 503):
                 retry_after = int(resp.headers.get("Retry-After", 5))

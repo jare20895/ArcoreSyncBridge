@@ -4,6 +4,7 @@ Health and monitoring endpoints for system diagnostics
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text, select
+import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pydantic import BaseModel
@@ -16,6 +17,7 @@ from app.services.database import DatabaseClient
 import psycopg2
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 class DropSlotRequest(BaseModel):
     slot_name: str
@@ -108,8 +110,8 @@ def get_cdc_health(db: Session = Depends(get_db)):
                         "flush_lag_mb": round(flush_lag_bytes / (1024 * 1024), 2) if flush_lag_bytes else None,
                     })
             conn.close()
-        except Exception as e:
-            print(f"Error fetching local slots: {e}")
+        except Exception:
+            logger.exception("health_local_slot_fetch_failed")
 
         # 2. Registered Instance Slots
         instances = db.execute(select(DatabaseInstance)).scalars().all()
@@ -150,9 +152,9 @@ def get_cdc_health(db: Session = Depends(get_db)):
                         "flush_lag_bytes": flush_lag_bytes,
                         "flush_lag_mb": round(flush_lag_bytes / (1024 * 1024), 2) if flush_lag_bytes is not None else None,
                     })
-            except Exception as e:
+            except Exception:
                 # Log but continue
-                print(f"Error fetching slots from {instance.instance_label}: {e}")
+                logger.exception("health_remote_slot_fetch_failed instance_label=%s", instance.instance_label)
                 # Optionally add an error marker to UI?
 
         # Determine health status (Aggregate)

@@ -1,7 +1,11 @@
 import re
+import logging
 from typing import List, Dict, Optional, Any
 from app.services.graph import GraphClient
 from app.schemas.introspection import ColumnInfo
+
+
+logger = logging.getLogger(__name__)
 
 def sp_safe_internal_name(col_name: str) -> str:
     """
@@ -89,8 +93,7 @@ class SharePointProvisioner:
             "description": description,
             "list": {"template": "genericList"},
         }
-        print(f"[DEBUG] Creating list at site_id: {site_id}")
-        print(f"[DEBUG] Payload: {payload}")
+        logger.info("creating_sharepoint_list site_id=%s display_name=%s", site_id, display_name)
         return self.graph.request("POST", f"/sites/{site_id}/lists", json_body=payload)
 
     def list_columns(self, site_id: str, list_id: str) -> Dict[str, Dict[str, Any]]:
