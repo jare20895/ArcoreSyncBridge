@@ -5,6 +5,7 @@ import cProfile
 from uuid import uuid4
 from datetime import datetime
 from unittest.mock import MagicMock
+import os
 
 # Running inside /app which is package root
 
@@ -13,6 +14,12 @@ from app.db.session import SessionLocal
 from app.models.core import SyncDefinition, DatabaseInstance, SyncSource, SyncTarget, SharePointConnection, FieldMapping
 from app.services.pusher import Pusher
 from app.services.graph import GraphClient
+
+DB_HOST = os.environ.get("POSTGRES_HOST", "db")
+DB_PORT = int(os.environ.get("POSTGRES_PORT", "5432"))
+DB_NAME = os.environ.get("POSTGRES_DB", "arcore_syncbridge")
+DB_USER = os.environ.get("POSTGRES_USER", "change_me")
+DB_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "change_me")
 
 def setup_benchmark_data(db):
     # Create Objects
@@ -28,11 +35,11 @@ def setup_benchmark_data(db):
     
     instance = DatabaseInstance(
         instance_label=f"benchmark_db_{uuid4()}",
-        host="db",
-        port=5432,
-        db_name="arcore_syncbridge",
-        username="arcore",
-        password="arcore_password"
+        host=DB_HOST,
+        port=DB_PORT,
+        db_name=DB_NAME,
+        username=DB_USER,
+        password=DB_PASSWORD
     )
     db.add(instance)
     db.flush()

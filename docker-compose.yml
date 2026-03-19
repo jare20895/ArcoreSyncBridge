@@ -6,15 +6,15 @@ services:
     restart: always
     command: postgres -c wal_level=logical
     environment:
-      POSTGRES_USER: arcore
-      POSTGRES_PASSWORD: arcore_password
-      POSTGRES_DB: arcore_syncbridge
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5465:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U arcore -d arcore_syncbridge"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -37,14 +37,14 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - POSTGRES_USER=arcore
-      - POSTGRES_PASSWORD=arcore_password
-      - POSTGRES_DB=arcore_syncbridge
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=dev_secret_key
-      - ALGORITHM=HS256
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
     depends_on:
       db:
         condition: service_healthy
@@ -61,7 +61,7 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - NEXT_PUBLIC_API_URL=http://arcore:8401
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8401}
     depends_on:
       - backend
 
@@ -74,15 +74,15 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - POSTGRES_USER=arcore
-      - POSTGRES_PASSWORD=arcore_password
-      - POSTGRES_DB=arcore_syncbridge
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
       - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql://arcore:arcore_password@db:5432/arcore_syncbridge
-      - SECRET_KEY=dev_secret_key
-      - ALGORITHM=HS256
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
     depends_on:
       db:
         condition: service_healthy
@@ -98,15 +98,15 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - POSTGRES_USER=arcore
-      - POSTGRES_PASSWORD=arcore_password
-      - POSTGRES_DB=arcore_syncbridge
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
       - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql://arcore:arcore_password@db:5432/arcore_syncbridge
-      - SECRET_KEY=dev_secret_key
-      - ALGORITHM=HS256
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
     depends_on:
       db:
         condition: service_healthy
@@ -122,13 +122,13 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - POSTGRES_USER=arcore
-      - POSTGRES_PASSWORD=arcore_password
-      - POSTGRES_DB=arcore_syncbridge
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
       - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql://arcore:arcore_password@db:5432/arcore_syncbridge
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     depends_on:
       db:
         condition: service_healthy

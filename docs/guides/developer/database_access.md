@@ -11,14 +11,14 @@ To connect using a desktop client:
 - **Host:** `localhost`
 - **Port:** `5465`
 - **Database:** `arcore_syncbridge`
-- **Username:** `arcore`
-- **Password:** `arcore_password`
+- **Username:** value from `backend/.env`
+- **Password:** value from `backend/.env`
 - **Driver:** PostgreSQL
 
 ### CLI Access
 To connect via `psql` from your terminal (requires `psql` installed):
 ```bash
-psql -h localhost -p 5465 -U arcore -d arcore_syncbridge
+psql -h localhost -p 5465 -U "$POSTGRES_USER" -d arcore_syncbridge
 ```
 
 To connect directly inside the container:

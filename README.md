@@ -102,11 +102,18 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
+Populate `backend/.env` first. The tracked file now contains placeholders only.
+
 ### Frontend Setup
 ```bash
 cd frontend
 npm install
 npm run dev
+```
+
+### Docker Compose Setup
+```bash
+docker compose --env-file backend/.env up --build
 ```
 
 ### Environment Variables

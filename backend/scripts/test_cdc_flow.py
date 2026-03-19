@@ -22,8 +22,8 @@ REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 DB_HOST = os.environ.get("POSTGRES_HOST", "db")
 DB_PORT = int(os.environ.get("POSTGRES_PORT", "5432"))
 DB_NAME = os.environ.get("POSTGRES_DB", "arcore_syncbridge")
-DB_USER = os.environ.get("POSTGRES_USER", "arcore")
-DB_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "arcore_password")
+DB_USER = os.environ.get("POSTGRES_USER", "change_me")
+DB_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "change_me")
 
 def ensure_benchmark_table(db):
     exists = db.execute(text("SELECT to_regclass('public.benchmark_items')")).scalar()

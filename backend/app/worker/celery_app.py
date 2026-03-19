@@ -3,6 +3,15 @@ from celery import Celery
 
 # Use env vars or defaults
 redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+database_url = os.environ.get("DATABASE_URL")
+
+if not database_url:
+    db_user = os.environ.get("POSTGRES_USER", "change_me")
+    db_password = os.environ.get("POSTGRES_PASSWORD", "change_me")
+    db_host = os.environ.get("POSTGRES_HOST", "localhost")
+    db_port = os.environ.get("POSTGRES_PORT", "5432")
+    db_name = os.environ.get("POSTGRES_DB", "arcore_syncbridge")
+    database_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
 celery_app = Celery(
     "arcore_worker",
@@ -26,7 +35,7 @@ celery_app.conf.update(
     },
     # Celery Beat Configuration
     beat_scheduler="celery_sqlalchemy_scheduler.schedulers:DatabaseScheduler",
-    beat_dburi=os.environ.get("DATABASE_URL", "postgresql://arcore:arcore_password@db:5432/arcore_syncbridge"),
+    beat_dburi=database_url,
     beat_schedule_filename="/tmp/celerybeat-schedule",  # Fallback for file-based scheduler
     beat_schedule={
         "reconcile-drift-metrics-every-30-minutes": {

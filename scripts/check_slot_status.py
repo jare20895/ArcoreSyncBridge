@@ -4,7 +4,12 @@ import time
 import psycopg2
 
 def check_status():
-    dsn = "postgresql://arcore:arcore_password@localhost:5465/arcore_syncbridge"
+    db_user = os.environ.get("POSTGRES_USER", "change_me")
+    db_password = os.environ.get("POSTGRES_PASSWORD", "change_me")
+    db_host = os.environ.get("POSTGRES_HOST", "localhost")
+    db_port = os.environ.get("POSTGRES_PORT", "5465")
+    db_name = os.environ.get("POSTGRES_DB", "arcore_syncbridge")
+    dsn = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
     print(f"Checking slot status on {dsn}...")
     
     try:
