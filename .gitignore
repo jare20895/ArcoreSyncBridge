@@ -33,6 +33,7 @@ npm-debug.log
 yarn-error.log
 .next/
 dist/
+*.tsbuildinfo
 .DS_Store
 
 # IDEs

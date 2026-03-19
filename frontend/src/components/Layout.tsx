@@ -157,15 +157,15 @@ export default function Layout({ children }: LayoutProps) {
                 {activeTab?.name === 'Data Sources' && (
                     <>
                         <li><Link href="/data-sources" className="block px-3 py-2 rounded bg-light-primary/5 text-light-primary dark:bg-dark-primary/20 dark:text-dark-primary font-medium">Inventory</Link></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Schema Extraction</a></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Provisioning</a></li>
+                        <li><span className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300">Schema Extraction</span></li>
+                        <li><span className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300">Provisioning</span></li>
                     </>
                 )}
                 {activeTab?.name === 'Data Targets' && (
                     <>
                         <li><Link href="/data-targets" className="block px-3 py-2 rounded bg-light-primary/5 text-light-primary dark:bg-dark-primary/20 dark:text-dark-primary font-medium">Sites</Link></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Lists</a></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Columns</a></li>
+                        <li><span className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300">Lists</span></li>
+                        <li><span className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300">Columns</span></li>
                     </>
                 )}
                 {activeTab?.name === 'Connections' && (
@@ -227,8 +227,8 @@ export default function Layout({ children }: LayoutProps) {
                 {activeTab?.name === 'Runs & Ledger' && (
                     <>
                         <li><Link href="/runs" className="block px-3 py-2 rounded bg-light-primary/5 text-light-primary dark:bg-dark-primary/20 dark:text-dark-primary font-medium">Run History</Link></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Sync Ledger</a></li>
-                        <li><a href="#" className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Scheduled Jobs</a></li>
+                        <li><span className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300">Sync Ledger</span></li>
+                        <li><span className="block px-3 py-2 rounded text-light-text-secondary dark:text-gray-300">Scheduled Jobs</span></li>
                     </>
                 )}
                  {/* Fallback for other tabs */}
