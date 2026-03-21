@@ -29,6 +29,7 @@ from app.schemas.catalog import (
     TableIndexRead,
 )
 from app.schemas.api import ApiResponse
+from app.services.audit import record_audit_event
 from app.services.introspection import PostgresIntrospector, build_dsn
 
 router = APIRouter()
@@ -78,7 +79,7 @@ def list_tables(
 def extract_table_inventory(
     payload: TableInventoryExtractRequest,
     request: Request,
-    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
+    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     instance = db.get(DatabaseInstance, payload.instance_id)
@@ -147,14 +148,24 @@ def extract_table_inventory(
             db.commit()
         raise HTTPException(status_code=500, detail=str(e))
 
-    return success_response(request, _serialize_tables(db, payload.database_id))
+    result = _serialize_tables(db, payload.database_id)
+    record_audit_event(
+        db,
+        request,
+        principal,
+        action="inventory.tables.extract",
+        resource_type="database",
+        resource_id=str(payload.database_id),
+        details={"instance_id": str(payload.instance_id), "schema": payload.schema, "table_count": len(result)},
+    )
+    return success_response(request, result)
 
 
 @router.post("/tables/extract-details", response_model=ApiResponse[dict])
 def extract_table_details(
     payload: TableDetailsExtractRequest,
     request: Request,
-    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
+    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     instance = db.get(DatabaseInstance, payload.instance_id)
@@ -264,7 +275,17 @@ def extract_table_details(
             db.commit()
         raise HTTPException(status_code=500, detail=str(e))
 
-    return success_response(request, {"tables_processed": processed})
+    result = {"tables_processed": processed}
+    record_audit_event(
+        db,
+        request,
+        principal,
+        action="inventory.table_details.extract",
+        resource_type="database_instance",
+        resource_id=str(payload.instance_id),
+        details={"table_ids": [str(table_id) for table_id in payload.table_ids], "tables_processed": processed},
+    )
+    return success_response(request, result)
 
 
 @router.get("/tables/{table_id}", response_model=ApiResponse[DatabaseTableDetailRead])

@@ -21,6 +21,7 @@ from app.schemas.api import ApiResponse
 from app.services.graph import GraphClient
 from app.services.secrets import resolve_sharepoint_client_secret
 from app.services.sharepoint_discovery import SharePointDiscoveryService
+from app.services.audit import record_audit_event
 
 router = APIRouter()
 
@@ -123,7 +124,7 @@ def list_sites(
 def resolve_site(
     payload: SharePointSiteResolveRequest,
     request: Request,
-    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
+    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     connection = db.get(SharePointConnection, payload.connection_id)
@@ -165,6 +166,15 @@ def resolve_site(
 
     db.commit()
     db.refresh(site)
+    record_audit_event(
+        db,
+        request,
+        principal,
+        action="inventory.sharepoint_site.resolve",
+        resource_type="sharepoint_site",
+        resource_id=str(site.id),
+        details={"connection_id": str(payload.connection_id), "hostname": payload.hostname, "site_path": payload.site_path},
+    )
     return success_response(request, site)
 
 
@@ -173,7 +183,7 @@ def extract_sites(
     connection_id: UUID,
     request: Request,
     query: str = Query("*", description="Search query for sites"),
-    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
+    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Search and extract multiple sites from Graph API."""
@@ -186,6 +196,15 @@ def extract_sites(
     try:
         # Use service
         results = discovery.extract_sites(connection_id, query)
+        record_audit_event(
+            db,
+            request,
+            principal,
+            action="inventory.sharepoint_sites.extract",
+            resource_type="sharepoint_connection",
+            resource_id=str(connection_id),
+            details={"query": query, "site_count": len(results)},
+        )
         return success_response(request, results)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Site search failed: {str(e)}")
@@ -208,7 +227,7 @@ def list_site_lists(
 def extract_site_lists(
     site_id: UUID,
     request: Request,
-    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
+    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     site = db.get(SharePointSite, site_id)
@@ -227,7 +246,17 @@ def extract_site_lists(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"List discovery failed: {str(e)}")
 
-    return success_response(request, _serialize_lists(db, site.id))
+    result = _serialize_lists(db, site.id)
+    record_audit_event(
+        db,
+        request,
+        principal,
+        action="inventory.sharepoint_lists.extract",
+        resource_type="sharepoint_site",
+        resource_id=str(site.id),
+        details={"list_count": len(result)},
+    )
+    return success_response(request, result)
 
 
 @router.get("/lists/{list_id}/columns", response_model=ApiResponse[List[SharePointColumnRead]])
@@ -302,7 +331,7 @@ def _resolve_column_type(item: dict) -> str:
 def extract_list_columns(
     list_id: UUID,
     request: Request,
-    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
+    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     sp_list = db.get(SharePointList, list_id)
@@ -350,4 +379,14 @@ def extract_list_columns(
         .order_by(SharePointColumn.column_name)
         .all()
     )
-    return success_response(request, [SharePointColumnRead.model_validate(col) for col in columns])
+    result = [SharePointColumnRead.model_validate(col) for col in columns]
+    record_audit_event(
+        db,
+        request,
+        principal,
+        action="inventory.sharepoint_columns.extract",
+        resource_type="sharepoint_list",
+        resource_id=str(list_id),
+        details={"column_count": len(result)},
+    )
+    return success_response(request, result)

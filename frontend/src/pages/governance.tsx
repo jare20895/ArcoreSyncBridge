@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Activity, ArrowRight, RefreshCw, ShieldCheck, Users } from 'lucide-react';
 
-import { getAuditLog, getCurrentUser, getManagedUsers } from '../services/api';
+import { getAuditLog, getCurrentUser, getManagedUsers, updateManagedUser } from '../services/api';
 
 type Principal = {
   user_id?: string | null;
@@ -34,6 +34,9 @@ type ManagedUser = {
   last_login_at?: string | null;
 };
 
+const ROLE_OPTIONS = ['viewer', 'operator', 'editor', 'admin', 'platform_admin'];
+const STATUS_OPTIONS = ['ACTIVE', 'DISABLED'];
+
 const QUICK_LINKS = [
   {
     title: 'Run History',
@@ -55,6 +58,9 @@ export default function GovernancePage() {
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<Record<string, { role: string; status: string }>>({});
+  const [savingUserId, setSavingUserId] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   useEffect(() => {
     void loadData();
@@ -75,9 +81,15 @@ export default function GovernancePage() {
         ]);
         setAuditEntries(auditRows);
         setUsers(managedUsers);
+        setSaveState(
+          Object.fromEntries(
+            managedUsers.map((user: ManagedUser) => [user.id, { role: user.role, status: user.status }])
+          )
+        );
       } else {
         setAuditEntries([]);
         setUsers([]);
+        setSaveState({});
       }
     } catch (err: any) {
       setError(err?.response?.data?.error?.message || 'Failed to load governance data.');
@@ -97,6 +109,44 @@ export default function GovernancePage() {
   };
 
   const isAdmin = principal?.role === 'admin' || principal?.role === 'platform_admin';
+
+  const updateDraft = (userId: string, patch: Partial<{ role: string; status: string }>) => {
+    setSaveState((current) => ({
+      ...current,
+      [userId]: {
+        role: patch.role ?? current[userId]?.role ?? 'viewer',
+        status: patch.status ?? current[userId]?.status ?? 'ACTIVE',
+      },
+    }));
+  };
+
+  const saveUserAccess = async (user: ManagedUser) => {
+    const draft = saveState[user.id];
+    if (!draft) return;
+    if (draft.role === user.role && draft.status === user.status) return;
+
+    setSavingUserId(user.id);
+    setSaveMessage(null);
+
+    try {
+      await updateManagedUser(user.id, {
+        role: draft.role,
+        status: draft.status,
+      });
+      setUsers((current) =>
+        current.map((item) =>
+          item.id === user.id ? { ...item, role: draft.role, status: draft.status } : item
+        )
+      );
+      setSaveMessage(`Updated access for ${user.email}.`);
+      const auditRows = await getAuditLog({ limit: 20 });
+      setAuditEntries(auditRows);
+    } catch (err: any) {
+      setSaveMessage(err?.response?.data?.error?.message || `Failed to update ${user.email}.`);
+    } finally {
+      setSavingUserId(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -264,6 +314,11 @@ export default function GovernancePage() {
             <div className="p-5 text-sm text-light-text-secondary dark:text-dark-text-secondary">No managed users found.</div>
           ) : (
             <div className="divide-y divide-gray-200 dark:divide-gray-800">
+              {saveMessage ? (
+                <div className="border-b border-gray-200 bg-gray-50 px-5 py-3 text-sm text-light-text-secondary dark:border-gray-800 dark:bg-gray-900 dark:text-dark-text-secondary">
+                  {saveMessage}
+                </div>
+              ) : null}
               {users.map((user) => (
                 <div key={user.id} className="px-5 py-4">
                   <div className="flex items-start justify-between gap-4">
@@ -273,13 +328,58 @@ export default function GovernancePage() {
                       </div>
                       <div className="mt-1 text-sm text-light-text-secondary dark:text-dark-text-secondary">{user.email}</div>
                     </div>
-                    <div className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-gray-700 dark:bg-gray-900 dark:text-gray-300">
-                      {user.role}
+                    <div className="min-w-[188px] space-y-2">
+                      <label className="block text-xs uppercase tracking-wide text-light-text-secondary dark:text-dark-text-secondary">
+                        Role
+                      </label>
+                      <select
+                        value={saveState[user.id]?.role || user.role}
+                        onChange={(event) => updateDraft(user.id, { role: event.target.value })}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+                      >
+                        {ROLE_OPTIONS.map((role) => (
+                          <option key={role} value={role}>
+                            {role}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
-                  <div className="mt-3 flex items-center justify-between text-xs text-light-text-secondary dark:text-dark-text-secondary">
-                    <span>Status: {user.status}</span>
-                    <span>Last login: {formatDateTime(user.last_login_at)}</span>
+                  <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                    <div className="grid gap-3 sm:grid-cols-[180px_auto] sm:items-end">
+                      <div>
+                        <label className="block text-xs uppercase tracking-wide text-light-text-secondary dark:text-dark-text-secondary">
+                          Status
+                        </label>
+                        <select
+                          value={saveState[user.id]?.status || user.status}
+                          onChange={(event) => updateDraft(user.id, { status: event.target.value })}
+                          className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+                        >
+                          {STATUS_OPTIONS.map((status) => (
+                            <option key={status} value={status}>
+                              {status}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="text-xs text-light-text-secondary dark:text-dark-text-secondary">
+                        Last login: {formatDateTime(user.last_login_at)}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => saveUserAccess(user)}
+                      disabled={
+                        savingUserId === user.id ||
+                        (
+                          (saveState[user.id]?.role || user.role) === user.role &&
+                          (saveState[user.id]?.status || user.status) === user.status
+                        )
+                      }
+                      className="inline-flex items-center justify-center rounded-lg bg-light-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-opacity-90 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-dark-primary"
+                    >
+                      {savingUserId === user.id ? 'Saving...' : 'Save Access'}
+                    </button>
                   </div>
                 </div>
               ))}

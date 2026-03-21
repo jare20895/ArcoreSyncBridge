@@ -9,6 +9,7 @@ from app.api.responses import success_response
 from app.core.security import OPERATOR_ROLES, VIEWER_ROLES, Principal, require_roles
 from app.db.session import SessionLocal
 from app.schemas.api import ApiResponse
+from app.services.audit import record_audit_event
 from app.services.schedule_service import ScheduleService
 from app.services.schedule_audit import ScheduleAuditService
 
@@ -56,19 +57,30 @@ class AuditLogResponse(BaseModel):
 def enable_schedule(
     sync_def_id: UUID,
     config: ScheduleConfig,
-    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    request: Request,
+    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     """Enable scheduled sync for a sync definition."""
     service = ScheduleService(db)
     try:
-        return service.enable_schedule(
+        result = service.enable_schedule(
             sync_def_id,
             config.schedule_type,
             config.interval_seconds,
             config.cron_expression,
             config.timezone
         )
+        record_audit_event(
+            db,
+            request,
+            principal,
+            action="schedule.enable",
+            resource_type="sync_definition",
+            resource_id=str(sync_def_id),
+            details=config.model_dump(exclude_none=True),
+        )
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -76,13 +88,23 @@ def enable_schedule(
 @router.post("/{sync_def_id}/disable", response_model=ScheduleResponse)
 def disable_schedule(
     sync_def_id: UUID,
-    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    request: Request,
+    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Disable scheduled sync for a sync definition."""
     service = ScheduleService(db)
     try:
-        return service.disable_schedule(sync_def_id)
+        result = service.disable_schedule(sync_def_id)
+        record_audit_event(
+            db,
+            request,
+            principal,
+            action="schedule.disable",
+            resource_type="sync_definition",
+            resource_id=str(sync_def_id),
+        )
+        return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -90,13 +112,23 @@ def disable_schedule(
 @router.delete("/{sync_def_id}")
 def delete_schedule(
     sync_def_id: UUID,
-    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    request: Request,
+    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Delete schedule for a sync definition."""
     service = ScheduleService(db)
     try:
-        return service.delete_schedule(sync_def_id)
+        result = service.delete_schedule(sync_def_id)
+        record_audit_event(
+            db,
+            request,
+            principal,
+            action="schedule.delete",
+            resource_type="sync_definition",
+            resource_id=str(sync_def_id),
+        )
+        return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.core.security import OPERATOR_ROLES, Principal, require_roles
 from app.db.session import SessionLocal
 from app.models.core import SyncDefinition, SyncSource, DatabaseInstance
+from app.services.audit import record_audit_event
 
 
 router = APIRouter()
@@ -28,7 +29,8 @@ def get_cdc_manager(request: Request):
 @router.post("/{sync_def_id}/enable-cdc")
 def enable_cdc(
     sync_def_id: UUID,
-    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    request: Request,
+    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
     cdc_manager = Depends(get_cdc_manager)
 ):
@@ -100,6 +102,16 @@ def enable_cdc(
     if cdc_manager:
         cdc_manager.start_cdc_for_instance(database_instance_id)
 
+    record_audit_event(
+        db,
+        request,
+        principal,
+        action="cdc.enable",
+        resource_type="sync_definition",
+        resource_id=str(sync_def_id),
+        details={"instance_id": str(database_instance_id)},
+    )
+
     return {
         "message": "CDC enabled successfully",
         "sync_def_id": str(sync_def_id),
@@ -111,7 +123,8 @@ def enable_cdc(
 @router.post("/{sync_def_id}/disable-cdc")
 def disable_cdc(
     sync_def_id: UUID,
-    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    request: Request,
+    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     """
@@ -128,6 +141,15 @@ def disable_cdc(
     # Disable CDC
     sync_def.cdc_enabled = False
     db.commit()
+
+    record_audit_event(
+        db,
+        request,
+        principal,
+        action="cdc.disable",
+        resource_type="sync_definition",
+        resource_id=str(sync_def_id),
+    )
 
     return {
         "message": "CDC disabled successfully",

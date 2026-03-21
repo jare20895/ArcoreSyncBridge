@@ -425,4 +425,9 @@ export const getManagedUsers = async () => {
   return unwrapData<any[]>(res.data);
 };
 
+export const updateManagedUser = async (userId: string, data: { email?: string; display_name?: string; role?: string; status?: string }) => {
+  const res = await api.patch(`/auth/users/${userId}`, data);
+  return unwrapData<any>(res.data);
+};
+
 export default api;
