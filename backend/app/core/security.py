@@ -37,15 +37,15 @@ def get_current_principal(
 
     if settings.AUTH_MODE == "header":
         email = request.headers.get(settings.AUTH_HEADER_EMAIL)
-        role_hint = request.headers.get(settings.AUTH_HEADER_ROLE)
+        normalized_email = email.lower().strip() if email else None
 
-        if not email:
+        if not normalized_email:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication email header is required",
             )
 
-        user = db.query(AppUser).filter(AppUser.email == email.lower()).one_or_none()
+        user = db.query(AppUser).filter(AppUser.email == normalized_email).one_or_none()
         if user:
             if user.status != "ACTIVE":
                 raise HTTPException(
@@ -69,9 +69,9 @@ def get_current_principal(
             )
 
         user = AppUser(
-            email=email.lower(),
-            display_name=email.split("@", 1)[0],
-            role=role_hint or settings.AUTH_DEFAULT_ROLE,
+            email=normalized_email,
+            display_name=normalized_email.split("@", 1)[0],
+            role="platform_admin" if normalized_email in settings.auth_bootstrap_emails else settings.AUTH_DEFAULT_ROLE,
             status="ACTIVE",
             last_login_at=datetime.utcnow(),
         )

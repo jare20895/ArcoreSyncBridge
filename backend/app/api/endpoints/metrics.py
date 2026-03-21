@@ -1,7 +1,7 @@
 """
 System and application metrics endpoints
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
 from typing import Dict, Any
@@ -10,14 +10,21 @@ import psutil
 import time
 
 from app.api.endpoints.database_instances import get_db
+from app.api.responses import success_response
+from app.core.security import OPERATOR_ROLES, VIEWER_ROLES, Principal, require_roles
 from app.models.core import DatabaseInstance, SyncDefinition
 from app.models.inventory import Application, Database, DatabaseTable, SharePointList, SyncMetric
+from app.schemas.api import ApiResponse
 from app.services.reconciliation import ReconciliationService
 
 router = APIRouter()
 
-@router.get("/counts")
-def get_system_counts(db: Session = Depends(get_db)):
+@router.get("/counts", response_model=ApiResponse[dict])
+def get_system_counts(
+    request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
+    db: Session = Depends(get_db),
+):
     """Get counts of various system entities"""
     try:
         # Count applications
@@ -57,7 +64,7 @@ def get_system_counts(db: Session = Depends(get_db)):
             (SyncDefinition.cdc_enabled == True) | (SyncDefinition.schedule_enabled == True)
         ).scalar() or 0
 
-        return {
+        return success_response(request, {
             "applications": applications_count,
             "databases": databases_count,
             "instances": instances_count,
@@ -70,12 +77,16 @@ def get_system_counts(db: Session = Depends(get_db)):
             "sync_definitions": sync_definitions_count,
             "active_syncs": active_syncs_count,
             "timestamp": datetime.utcnow().isoformat()
-        }
+        })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get system counts: {str(e)}")
 
-@router.post("/system-snapshot")
-def get_system_snapshot(duration_seconds: int = 15):
+@router.post("/system-snapshot", response_model=ApiResponse[dict])
+def get_system_snapshot(
+    request: Request,
+    duration_seconds: int = 15,
+    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
+):
     """
     Collect system metrics over a specified duration.
     Returns average CPU and memory usage.
@@ -85,7 +96,7 @@ def get_system_snapshot(duration_seconds: int = 15):
 
     try:
         # Collect system samples only
-        return _collect_system_metrics_only(duration_seconds)
+        return success_response(request, _collect_system_metrics_only(duration_seconds))
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to collect system snapshot: {str(e)}")
@@ -140,8 +151,12 @@ def _collect_system_metrics_only(duration_seconds: int) -> Dict[str, Any]:
     }
 
 
-@router.get("/drift-summary")
-def get_drift_summary(db: Session = Depends(get_db)):
+@router.get("/drift-summary", response_model=ApiResponse[dict])
+def get_drift_summary(
+    request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
+    db: Session = Depends(get_db),
+):
     """
     Get aggregated drift metrics across all syncs.
     Returns summary of matched/mismatched counts and total drift.
@@ -149,13 +164,17 @@ def get_drift_summary(db: Session = Depends(get_db)):
     try:
         reconciliation_service = ReconciliationService(db)
         summary = reconciliation_service.get_drift_summary()
-        return summary
+        return success_response(request, summary)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get drift summary: {str(e)}")
 
 
-@router.get("/drift-metrics")
-def get_drift_metrics(db: Session = Depends(get_db)):
+@router.get("/drift-metrics", response_model=ApiResponse[list[dict]])
+def get_drift_metrics(
+    request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
+    db: Session = Depends(get_db),
+):
     """
     Get detailed drift metrics for all sync definitions.
     Returns list of metrics with source/target counts and drift deltas.
@@ -183,13 +202,17 @@ def get_drift_metrics(db: Session = Depends(get_db)):
                 "total_rows_synced": metric.total_rows_synced
             })
 
-        return result
+        return success_response(request, result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get drift metrics: {str(e)}")
 
 
-@router.post("/reconcile-drift")
-def trigger_drift_reconciliation(db: Session = Depends(get_db)):
+@router.post("/reconcile-drift", response_model=ApiResponse[dict])
+def trigger_drift_reconciliation(
+    request: Request,
+    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
+    db: Session = Depends(get_db),
+):
     """
     Manually trigger drift reconciliation for all syncs.
     This runs synchronously and may take some time.
@@ -197,10 +220,10 @@ def trigger_drift_reconciliation(db: Session = Depends(get_db)):
     try:
         reconciliation_service = ReconciliationService(db)
         summary = reconciliation_service.reconcile_all_syncs()
-        return {
+        return success_response(request, {
             "success": True,
             "message": "Drift reconciliation completed",
             "summary": summary
-        }
+        })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to reconcile drift: {str(e)}")

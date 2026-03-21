@@ -34,6 +34,7 @@ class AppUserCreate(BaseModel):
 
 
 class AppUserUpdate(BaseModel):
+    email: Optional[str] = None
     display_name: Optional[str] = None
     role: Optional[str] = None
     status: Optional[str] = None

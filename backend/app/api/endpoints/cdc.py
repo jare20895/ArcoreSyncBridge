@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
-from app.core.security import OPERATOR_ROLES, require_roles
+from app.core.security import OPERATOR_ROLES, Principal, require_roles
 from app.db.session import SessionLocal
 from app.models.core import SyncDefinition, SyncSource, DatabaseInstance
 
@@ -137,7 +137,10 @@ def disable_cdc(
 
 
 @router.get("/status")
-def get_cdc_status(cdc_manager = Depends(get_cdc_manager)):
+def get_cdc_status(
+    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
+    cdc_manager = Depends(get_cdc_manager),
+):
     """Get status of CDC Manager and running threads."""
     if not cdc_manager:
         return {

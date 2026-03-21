@@ -110,27 +110,27 @@ export const testDatabaseConnection = async (data: any) => {
 // Data Sources (Database Inventory)
 export const getSourceTables = async (databaseId: string) => {
   const res = await api.get('/data-sources/tables', { params: { database_id: databaseId } });
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
 export const extractSourceTables = async (data: { database_id: string; instance_id: string; schema?: string }) => {
   const res = await api.post('/data-sources/tables/extract', data);
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
 export const extractSourceTableDetails = async (data: { instance_id: string; table_ids: string[] }) => {
   const res = await api.post('/data-sources/tables/extract-details', data);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 export const getSourceTableDetails = async (tableId: string) => {
   const res = await api.get(`/data-sources/tables/${tableId}`);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 export const provisionSharePointList = async (data: any) => {
   const res = await api.post('/provisioning/list', data);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 export const getConnections = async (): Promise<any[]> => {
@@ -153,46 +153,46 @@ export const getSharePointSites = async (connectionId?: string) => {
   const res = await api.get('/data-targets/sites', {
     params: connectionId ? { connection_id: connectionId } : {}
   });
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
 export const extractSharePointSites = async (connectionId: string, query: string = "*") => {
   const res = await api.post('/data-targets/sites/extract', null, {
     params: { connection_id: connectionId, query }
   });
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
 export const resolveSharePointSite = async (data: { connection_id: string; hostname: string; site_path: string }) => {
   const res = await api.post('/data-targets/sites/resolve', data);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 export const getSharePointLists = async (siteId: string) => {
   const res = await api.get(`/data-targets/sites/${siteId}/lists`);
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
 export const extractSharePointLists = async (siteId: string) => {
   const res = await api.post(`/data-targets/sites/${siteId}/lists/extract`);
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
 export const getSharePointListsBySourceTable = async (tableId: string) => {
   const res = await api.get('/data-targets/lists/by-source', {
     params: { source_table_id: tableId }
   });
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
 export const getSharePointColumns = async (listId: string) => {
   const res = await api.get(`/data-targets/lists/${listId}/columns`);
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
 export const extractSharePointColumns = async (listId: string) => {
   const res = await api.post(`/data-targets/lists/${listId}/columns/extract`);
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
 export const getSyncDefinitions = async (): Promise<any[]> => {
@@ -248,22 +248,22 @@ export const bulkUpdateFieldMappings = async (syncDefId: string, mappings: any[]
 
 export const generateDriftReport = async (data: { sync_def_id: string, check_type: string }) => {
   const res = await api.post('/ops/drift-report', data);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 export const triggerFailover = async (data: { new_primary_instance_id: string, old_primary_instance_id?: string }) => {
   const res = await api.post('/ops/failover', data);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 export const triggerSync = async (syncDefId: string) => {
   const res = await api.post(`/ops/sync/${syncDefId}`);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 export const resetSyncCursors = async (syncDefId: string) => {
   const res = await api.delete(`/ops/sync/${syncDefId}/cursors`);
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 export const getCurrentUser = async (): Promise<any> => {
@@ -273,7 +273,7 @@ export const getCurrentUser = async (): Promise<any> => {
 
 export const getSyncRuns = async () => {
   const res = await api.get('/runs/');
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
 // Schedules
@@ -299,7 +299,7 @@ export const deleteSchedule = async (syncDefId: string) => {
 
 export const getScheduleAudit = async (syncDefId: string, limit: number = 50) => {
   const res = await api.get(`/schedules/${syncDefId}/audit`, { params: { limit } });
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
 // CDC (placeholder - will be implemented in Epic 5)
@@ -316,7 +316,7 @@ export const disableCDC = async (syncDefId: string) => {
 // Replication Slots
 export const getReplicationSlots = async (instanceId: string) => {
   const res = await api.get(`/replication/slots/${instanceId}`);
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
 export const createReplicationSlot = async (instanceId: string, slotName: string, plugin: string = 'pgoutput') => {
@@ -325,7 +325,7 @@ export const createReplicationSlot = async (instanceId: string, slotName: string
     slot_name: slotName,
     plugin
   });
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 export const dropReplicationSlot = async (instanceId: string, slotName: string) => {
@@ -335,18 +335,18 @@ export const dropReplicationSlot = async (instanceId: string, slotName: string) 
       slot_name: slotName
     }
   });
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 // Publications
 export const getPublicationStatus = async (instanceId: string, pubName: string = "arcore_cdc_pub") => {
   const res = await api.get(`/replication/publications/${instanceId}`, { params: { pub_name: pubName } });
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 export const getPublicationAvailableTables = async (instanceId: string, schema: string = "public") => {
   const res = await api.get(`/replication/publications/${instanceId}/tables`, { params: { schema } });
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
 export const createPublication = async (instanceId: string, pubName: string = "arcore_cdc_pub", forAllTables: boolean = true, tables: string[] = []) => {
@@ -356,7 +356,7 @@ export const createPublication = async (instanceId: string, pubName: string = "a
     for_all_tables: forAllTables,
     tables
   });
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 export const dropPublication = async (instanceId: string, pubName: string = "arcore_cdc_pub") => {
@@ -366,47 +366,63 @@ export const dropPublication = async (instanceId: string, pubName: string = "arc
       pub_name: pubName
     }
   });
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 // Health Monitoring
 export const getCdcHealth = async () => {
   const res = await api.get('/health/cdc-health');
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 export const getDatabaseStats = async () => {
   const res = await api.get('/health/database-stats');
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 // Metrics
 export const getSystemCounts = async () => {
   const res = await api.get('/metrics/counts');
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 export const getSystemSnapshot = async (durationSeconds: number = 15) => {
   const res = await api.post('/metrics/system-snapshot', null, {
     params: { duration_seconds: durationSeconds }
   });
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 // Drift Metrics
 export const getDriftSummary = async () => {
   const res = await api.get('/metrics/drift-summary');
-  return res.data;
+  return unwrapData<any>(res.data);
 };
 
 export const getDriftMetrics = async () => {
   const res = await api.get('/metrics/drift-metrics');
-  return res.data;
+  return unwrapData<any[]>(res.data);
 };
 
 export const triggerDriftReconciliation = async () => {
   const res = await api.post('/metrics/reconcile-drift');
-  return res.data;
+  return unwrapData<any>(res.data);
+};
+
+export const getAuditLog = async (params?: {
+  actor_email?: string;
+  action?: string;
+  resource_type?: string;
+  resource_id?: string;
+  limit?: number;
+}) => {
+  const res = await api.get('/audit/', { params });
+  return unwrapData<any[]>(res.data);
+};
+
+export const getManagedUsers = async () => {
+  const res = await api.get('/auth/users');
+  return unwrapData<any[]>(res.data);
 };
 
 export default api;

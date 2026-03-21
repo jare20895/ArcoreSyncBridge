@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     AUTH_DISABLED_ROLE: str = "platform_admin"
     AUTH_DEFAULT_ROLE: str = "viewer"
     AUTH_AUTO_PROVISION_USERS: bool = True
+    AUTH_BOOTSTRAP_EMAILS: str = ""
 
     @property
     def cors_allowed_origins(self) -> list[str]:
@@ -37,6 +38,14 @@ class Settings(BaseSettings):
             for origin in self.CORS_ALLOWED_ORIGINS.split(",")
             if origin.strip()
         ]
+
+    @property
+    def auth_bootstrap_emails(self) -> set[str]:
+        return {
+            email.strip().lower()
+            for email in self.AUTH_BOOTSTRAP_EMAILS.split(",")
+            if email.strip()
+        }
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -116,6 +116,7 @@ def test_auth_me_reads_header_principal_and_provisions_user(monkeypatch):
     monkeypatch.setattr(settings, "AUTH_HEADER_EMAIL", "X-User-Email")
     monkeypatch.setattr(settings, "AUTH_HEADER_ROLE", "X-User-Role")
     monkeypatch.setattr(settings, "AUTH_AUTO_PROVISION_USERS", True)
+    monkeypatch.setattr(settings, "AUTH_DEFAULT_ROLE", "viewer")
 
     response = client.get(
         "/api/v1/auth/me",
@@ -128,7 +129,7 @@ def test_auth_me_reads_header_principal_and_provisions_user(monkeypatch):
     assert response.status_code == 200
     body = response.json()["data"]
     assert body["email"] == "architect@example.com"
-    assert body["role"] == "admin"
+    assert body["role"] == "viewer"
     assert body["auth_mode"] == "header"
     assert body["user_id"]
 
@@ -154,6 +155,7 @@ def test_auth_users_admin_endpoints_use_persisted_roles(monkeypatch):
     monkeypatch.setattr(settings, "AUTH_HEADER_EMAIL", "X-User-Email")
     monkeypatch.setattr(settings, "AUTH_HEADER_ROLE", "X-User-Role")
     monkeypatch.setattr(settings, "AUTH_AUTO_PROVISION_USERS", True)
+    monkeypatch.setattr(settings, "AUTH_BOOTSTRAP_EMAILS", "admin@example.com")
 
     create_response = client.post(
         "/api/v1/auth/users",
@@ -179,6 +181,39 @@ def test_auth_users_admin_endpoints_use_persisted_roles(monkeypatch):
     )
     assert list_response.status_code == 200
     assert len(list_response.json()["data"]) == 2
+
+
+def test_audit_log_requires_admin_and_returns_entries(monkeypatch):
+    monkeypatch.setattr(settings, "AUTH_MODE", "header")
+    monkeypatch.setattr(settings, "AUTH_HEADER_EMAIL", "X-User-Email")
+    monkeypatch.setattr(settings, "AUTH_AUTO_PROVISION_USERS", True)
+    monkeypatch.setattr(settings, "AUTH_BOOTSTRAP_EMAILS", "admin@example.com")
+
+    create_user = client.post(
+        "/api/v1/auth/users",
+        json={
+            "email": "operator@example.com",
+            "display_name": "Operator",
+            "role": "operator",
+            "status": "ACTIVE",
+        },
+        headers={"X-User-Email": "admin@example.com"},
+    )
+    assert create_user.status_code == 201
+
+    unauthorized = client.get(
+        "/api/v1/audit/",
+        headers={"X-User-Email": "viewer@example.com"},
+    )
+    assert unauthorized.status_code == 403
+
+    authorized = client.get(
+        "/api/v1/audit/",
+        headers={"X-User-Email": "admin@example.com"},
+    )
+    assert authorized.status_code == 200
+    rows = authorized.json()["data"]
+    assert any(row["action"] == "auth.user.create" for row in rows)
 
 
 def test_core_reads_require_authenticated_user_in_header_mode(monkeypatch):

@@ -2,10 +2,12 @@ import os
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
+from app.api.responses import success_response
+from app.core.security import OPERATOR_ROLES, VIEWER_ROLES, Principal, require_roles
 from app.db.session import get_db
 from app.models.core import SharePointConnection
 from app.models.inventory import SharePointSite, SharePointList, SharePointColumn
@@ -15,6 +17,7 @@ from app.schemas.catalog import (
     SharePointListRead,
     SharePointColumnRead,
 )
+from app.schemas.api import ApiResponse
 from app.services.graph import GraphClient
 from app.services.secrets import resolve_sharepoint_client_secret
 from app.services.sharepoint_discovery import SharePointDiscoveryService
@@ -62,9 +65,11 @@ def _serialize_lists(db: Session, site_id: UUID) -> List[SharePointListRead]:
     return lists
 
 
-@router.get("/lists/by-source", response_model=List[SharePointListRead])
+@router.get("/lists/by-source", response_model=ApiResponse[List[SharePointListRead]])
 def get_lists_by_source(
     source_table_id: UUID,
+    request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Get SharePoint lists that were provisioned from a specific source table."""
@@ -98,32 +103,36 @@ def get_lists_by_source(
                 columns_count=count or 0,
             )
         )
-    return results
+    return success_response(request, results)
 
 
-@router.get("/sites", response_model=List[SharePointSiteRead])
+@router.get("/sites", response_model=ApiResponse[List[SharePointSiteRead]])
 def list_sites(
+    request: Request,
     connection_id: Optional[UUID] = Query(None, description="SharePoint connection ID"),
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     db: Session = Depends(get_db),
 ):
     query = db.query(SharePointSite)
     if connection_id:
         query = query.filter(SharePointSite.connection_id == connection_id)
-    return query.order_by(SharePointSite.hostname, SharePointSite.site_path).all()
+    return success_response(request, query.order_by(SharePointSite.hostname, SharePointSite.site_path).all())
 
 
-@router.post("/sites/resolve", response_model=SharePointSiteRead)
+@router.post("/sites/resolve", response_model=ApiResponse[SharePointSiteRead])
 def resolve_site(
-    request: SharePointSiteResolveRequest,
+    payload: SharePointSiteResolveRequest,
+    request: Request,
+    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
-    connection = db.get(SharePointConnection, request.connection_id)
+    connection = db.get(SharePointConnection, payload.connection_id)
     if not connection:
         raise HTTPException(status_code=404, detail="SharePoint connection not found")
 
     graph = _get_graph_client(connection)
     try:
-        site_info = graph.request("GET", f"/sites/{request.hostname}:{request.site_path}")
+        site_info = graph.request("GET", f"/sites/{payload.hostname}:{payload.site_path}")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Site resolution failed: {str(e)}")
 
@@ -137,8 +146,8 @@ def resolve_site(
     )
 
     if existing:
-        existing.hostname = request.hostname
-        existing.site_path = request.site_path
+        existing.hostname = payload.hostname
+        existing.site_path = payload.site_path
         existing.web_url = site_info.get("webUrl", existing.web_url)
         existing.status = "ACTIVE"
         site = existing
@@ -146,8 +155,8 @@ def resolve_site(
         site = SharePointSite(
             connection_id=connection.id,
             tenant_id=connection.tenant_id,
-            hostname=request.hostname,
-            site_path=request.site_path,
+            hostname=payload.hostname,
+            site_path=payload.site_path,
             site_id=site_info.get("id"),
             web_url=site_info.get("webUrl", ""),
             status="ACTIVE",
@@ -156,13 +165,15 @@ def resolve_site(
 
     db.commit()
     db.refresh(site)
-    return site
+    return success_response(request, site)
 
 
-@router.post("/sites/extract", response_model=List[SharePointSiteRead])
+@router.post("/sites/extract", response_model=ApiResponse[List[SharePointSiteRead]])
 def extract_sites(
     connection_id: UUID,
+    request: Request,
     query: str = Query("*", description="Search query for sites"),
+    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Search and extract multiple sites from Graph API."""
@@ -175,25 +186,29 @@ def extract_sites(
     try:
         # Use service
         results = discovery.extract_sites(connection_id, query)
-        return results
+        return success_response(request, results)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Site search failed: {str(e)}")
 
 
-@router.get("/sites/{site_id}/lists", response_model=List[SharePointListRead])
+@router.get("/sites/{site_id}/lists", response_model=ApiResponse[List[SharePointListRead]])
 def list_site_lists(
     site_id: UUID,
+    request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     db: Session = Depends(get_db),
 ):
     site = db.get(SharePointSite, site_id)
     if not site:
         raise HTTPException(status_code=404, detail="SharePoint site not found")
-    return _serialize_lists(db, site_id)
+    return success_response(request, _serialize_lists(db, site_id))
 
 
-@router.post("/sites/{site_id}/lists/extract", response_model=List[SharePointListRead])
+@router.post("/sites/{site_id}/lists/extract", response_model=ApiResponse[List[SharePointListRead]])
 def extract_site_lists(
     site_id: UUID,
+    request: Request,
+    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     site = db.get(SharePointSite, site_id)
@@ -212,12 +227,14 @@ def extract_site_lists(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"List discovery failed: {str(e)}")
 
-    return _serialize_lists(db, site.id)
+    return success_response(request, _serialize_lists(db, site.id))
 
 
-@router.get("/lists/{list_id}/columns", response_model=List[SharePointColumnRead])
+@router.get("/lists/{list_id}/columns", response_model=ApiResponse[List[SharePointColumnRead]])
 def list_list_columns(
     list_id: UUID,
+    request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     db: Session = Depends(get_db),
 ):
     sp_list = db.get(SharePointList, list_id)
@@ -230,7 +247,7 @@ def list_list_columns(
         .order_by(SharePointColumn.column_name)
         .all()
     )
-    return [SharePointColumnRead.model_validate(col) for col in columns]
+    return success_response(request, [SharePointColumnRead.model_validate(col) for col in columns])
 
 
 def _resolve_column_type(item: dict) -> str:
@@ -281,9 +298,11 @@ def _resolve_column_type(item: dict) -> str:
         
     return "unknown"
 
-@router.post("/lists/{list_id}/columns/extract", response_model=List[SharePointColumnRead])
+@router.post("/lists/{list_id}/columns/extract", response_model=ApiResponse[List[SharePointColumnRead]])
 def extract_list_columns(
     list_id: UUID,
+    request: Request,
+    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     sp_list = db.get(SharePointList, list_id)
@@ -331,4 +350,4 @@ def extract_list_columns(
         .order_by(SharePointColumn.column_name)
         .all()
     )
-    return [SharePointColumnRead.model_validate(col) for col in columns]
+    return success_response(request, [SharePointColumnRead.model_validate(col) for col in columns])

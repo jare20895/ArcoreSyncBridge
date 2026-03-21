@@ -119,6 +119,22 @@ def test_create_database_instance_allows_editor_role_in_header_mode(monkeypatch)
     monkeypatch.setattr(settings, "AUTH_MODE", "header")
     monkeypatch.setattr(settings, "AUTH_HEADER_EMAIL", "X-User-Email")
     monkeypatch.setattr(settings, "AUTH_HEADER_ROLE", "X-User-Role")
+    monkeypatch.setattr(settings, "AUTH_AUTO_PROVISION_USERS", True)
+    monkeypatch.setattr(settings, "AUTH_BOOTSTRAP_EMAILS", "admin@example.com")
+
+    create_user_response = client.post(
+        "/api/v1/auth/users",
+        json={
+            "email": "editor@example.com",
+            "display_name": "Editor",
+            "role": "editor",
+            "status": "ACTIVE",
+        },
+        headers={
+            "X-User-Email": "admin@example.com",
+        },
+    )
+    assert create_user_response.status_code == 201
 
     response = client.post(
         "/api/v1/database-instances/",
@@ -132,7 +148,6 @@ def test_create_database_instance_allows_editor_role_in_header_mode(monkeypatch)
         },
         headers={
             "X-User-Email": "editor@example.com",
-            "X-User-Role": "editor",
         },
     )
 

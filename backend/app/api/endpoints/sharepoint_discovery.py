@@ -1,11 +1,14 @@
 from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import select
+from app.api.responses import success_response
 from app.api.endpoints.database_instances import get_db
+from app.core.security import OPERATOR_ROLES, VIEWER_ROLES, Principal, require_roles
 from app.models.core import SharePointConnection
 from app.models.inventory import SharePointSite, SharePointList
+from app.schemas.api import ApiResponse
 from app.services.graph import GraphClient
 from app.services.provisioner import SharePointProvisioner
 from app.services.sharepoint_discovery import SharePointDiscoveryService
@@ -40,37 +43,43 @@ def get_discovery_service(connection_id: UUID, db: Session) -> SharePointDiscove
 
 # --- Discovery / Extraction Endpoints ---
 
-@router.post("/{connection_id}/sites/extract")
+@router.post("/{connection_id}/sites/extract", response_model=ApiResponse[dict])
 def extract_sites(
     connection_id: UUID,
+    request: Request,
     query: str = "*",
+    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     """Crawl and store SharePoint sites."""
     svc = get_discovery_service(connection_id, db)
     try:
         sites = svc.extract_sites(connection_id, query)
-        return {"count": len(sites), "sites": [s.web_url for s in sites]}
+        return success_response(request, {"count": len(sites), "sites": [s.web_url for s in sites]})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Site extraction failed: {str(e)}")
 
-@router.post("/{connection_id}/sites/{site_db_id}/lists/extract")
+@router.post("/{connection_id}/sites/{site_db_id}/lists/extract", response_model=ApiResponse[dict])
 def extract_lists(
     connection_id: UUID,
     site_db_id: UUID,
+    request: Request,
+    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     """Crawl and store Lists for a specific stored site."""
     svc = get_discovery_service(connection_id, db)
     try:
         lists = svc.extract_lists(site_db_id)
-        return {"count": len(lists), "lists": [l.display_name for l in lists]}
+        return success_response(request, {"count": len(lists), "lists": [l.display_name for l in lists]})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"List extraction failed: {str(e)}")
 
-@router.get("/{connection_id}/sites")
+@router.get("/{connection_id}/sites", response_model=ApiResponse[list[dict]])
 def list_stored_sites(
     connection_id: UUID,
+    request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     db: Session = Depends(get_db)
 ):
     """List sites previously extracted to inventory."""
@@ -78,7 +87,7 @@ def list_stored_sites(
         select(SharePointSite).where(SharePointSite.connection_id == connection_id)
     ).scalars().all()
     
-    return [
+    return success_response(request, [
         {
             "id": s.id,
             "hostname": s.hostname,
@@ -87,12 +96,14 @@ def list_stored_sites(
             "status": s.status
         }
         for s in sites
-    ]
+    ])
 
-@router.get("/{connection_id}/sites/{site_db_id}/lists/stored")
+@router.get("/{connection_id}/sites/{site_db_id}/lists/stored", response_model=ApiResponse[list[dict]])
 def list_stored_lists(
     connection_id: UUID,
     site_db_id: UUID,
+    request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     db: Session = Depends(get_db)
 ):
     """List lists previously extracted for a site."""
@@ -100,7 +111,7 @@ def list_stored_lists(
         select(SharePointList).where(SharePointList.site_id == site_db_id)
     ).scalars().all()
     
-    return [
+    return success_response(request, [
         {
             "id": l.id,
             "display_name": l.display_name,
@@ -108,27 +119,31 @@ def list_stored_lists(
             "is_provisioned": l.is_provisioned
         }
         for l in lists
-    ]
+    ])
 
 # --- Direct Graph Passthrough (Legacy/Realtime) ---
 
-@router.get("/{connection_id}/sites/resolve")
+@router.get("/{connection_id}/sites/resolve", response_model=ApiResponse[dict])
 def resolve_site(
     connection_id: UUID,
+    request: Request,
     hostname: str,
     path: str,
+    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     prov = get_provisioner(connection_id, db)
     try:
-        return prov.get_site(hostname, path)
+        return success_response(request, prov.get_site(hostname, path))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Site resolution failed: {str(e)}")
 
-@router.get("/{connection_id}/sites/{site_id}/lists")
+@router.get("/{connection_id}/sites/{site_id}/lists", response_model=ApiResponse[dict])
 def get_site_lists(
     connection_id: UUID,
     site_id: str,
+    request: Request,
+    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     prov = get_provisioner(connection_id, db)
@@ -138,19 +153,21 @@ def get_site_lists(
         # it has `find_list_by_display_name`.
         # I should add `get_lists` to SharePointProvisioner or call graph directly.
         # Calling graph directly via prov.graph is easiest for now.
-        return prov.graph.request("GET", f"/sites/{site_id}/lists")
+        return success_response(request, prov.graph.request("GET", f"/sites/{site_id}/lists"))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"List fetch failed: {str(e)}")
 
-@router.get("/{connection_id}/sites/{site_id}/lists/{list_id}/columns")
+@router.get("/{connection_id}/sites/{site_id}/lists/{list_id}/columns", response_model=ApiResponse[dict])
 def get_list_columns(
     connection_id: UUID,
     site_id: str,
     list_id: str,
+    request: Request,
+    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     prov = get_provisioner(connection_id, db)
     try:
-        return prov.graph.request("GET", f"/sites/{site_id}/lists/{list_id}/columns")
+        return success_response(request, prov.graph.request("GET", f"/sites/{site_id}/lists/{list_id}/columns"))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Column fetch failed: {str(e)}")

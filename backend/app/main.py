@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqladmin import Admin
 
-from app.api.endpoints import auth, database_instances, sharepoint_connections, provisioning, sharepoint_discovery, sync_definitions, moves, ops, replication, runs, applications, databases, data_sources, data_targets, field_mappings, schedules, cdc, health, metrics
+from app.api.endpoints import audit, auth, database_instances, sharepoint_connections, provisioning, sharepoint_discovery, sync_definitions, moves, ops, replication, runs, applications, databases, data_sources, data_targets, field_mappings, schedules, cdc, health, metrics
 from app.core.config import settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
@@ -117,6 +117,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 app.add_middleware(RequestIDMiddleware)
 
 app.include_router(applications.router, prefix="/api/v1/applications", tags=["applications"])
+app.include_router(audit.router, prefix="/api/v1/audit", tags=["audit"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(databases.router, prefix="/api/v1/databases", tags=["databases"])
 app.include_router(database_instances.router, prefix="/api/v1/database-instances", tags=["database-instances"])

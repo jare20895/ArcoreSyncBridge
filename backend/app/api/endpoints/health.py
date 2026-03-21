@@ -34,7 +34,11 @@ class VacuumTableRequest(BaseModel):
     full: bool = False
 
 @router.get("/cdc-health", response_model=ApiResponse[Dict[str, Any]])
-def get_cdc_health(request: Request, db: Session = Depends(get_db)):
+def get_cdc_health(
+    request: Request,
+    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
+    db: Session = Depends(get_db),
+):
     """
     Get CDC replication slot health metrics including:
     - Slot status (active/inactive)
@@ -209,7 +213,11 @@ def get_cdc_health(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to get CDC health: {str(e)}")
 
 @router.get("/database-stats", response_model=ApiResponse[Dict[str, Any]])
-def get_database_stats(request: Request, db: Session = Depends(get_db)):
+def get_database_stats(
+    request: Request,
+    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
+    db: Session = Depends(get_db),
+):
     """Get database performance statistics"""
     try:
         dsn = f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"

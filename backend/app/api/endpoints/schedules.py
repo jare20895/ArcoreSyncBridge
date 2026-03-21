@@ -1,12 +1,14 @@
 from uuid import UUID
 from typing import List, Optional
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
-from app.core.security import OPERATOR_ROLES, require_roles
+from app.api.responses import success_response
+from app.core.security import OPERATOR_ROLES, VIEWER_ROLES, Principal, require_roles
 from app.db.session import SessionLocal
+from app.schemas.api import ApiResponse
 from app.services.schedule_service import ScheduleService
 from app.services.schedule_audit import ScheduleAuditService
 
@@ -99,12 +101,14 @@ def delete_schedule(
         raise HTTPException(status_code=404, detail=str(e))
 
 
-@router.get("/{sync_def_id}/audit", response_model=List[AuditLogResponse])
+@router.get("/{sync_def_id}/audit", response_model=ApiResponse[List[AuditLogResponse]])
 def get_schedule_audit(
     sync_def_id: UUID,
+    request: Request,
     limit: int = 50,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     db: Session = Depends(get_db)
 ):
     """Get schedule audit logs for a sync definition."""
     service = ScheduleAuditService(db)
-    return service.get_recent_audits(sync_def_id, limit)
+    return success_response(request, service.get_recent_audits(sync_def_id, limit))

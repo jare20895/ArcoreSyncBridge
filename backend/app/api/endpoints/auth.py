@@ -84,6 +84,8 @@ def update_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     update_data = payload.model_dump(exclude_unset=True)
+    if "email" in update_data:
+        update_data["email"] = update_data["email"].lower()
     for field, value in update_data.items():
         setattr(user, field, value)
 

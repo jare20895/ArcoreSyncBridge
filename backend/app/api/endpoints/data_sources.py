@@ -2,10 +2,12 @@ from datetime import datetime
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
+from app.api.responses import success_response
+from app.core.security import OPERATOR_ROLES, VIEWER_ROLES, Principal, require_roles
 from app.db.session import get_db
 from app.models.core import DatabaseInstance
 from app.models.inventory import (
@@ -26,6 +28,7 @@ from app.schemas.catalog import (
     TableConstraintRead,
     TableIndexRead,
 )
+from app.schemas.api import ApiResponse
 from app.services.introspection import PostgresIntrospector, build_dsn
 
 router = APIRouter()
@@ -58,27 +61,31 @@ def _serialize_tables(db: Session, database_id: UUID) -> List[DatabaseTableRead]
     return tables
 
 
-@router.get("/tables", response_model=List[DatabaseTableRead])
+@router.get("/tables", response_model=ApiResponse[List[DatabaseTableRead]])
 def list_tables(
+    request: Request,
     database_id: UUID = Query(..., description="Logical database ID"),
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     db: Session = Depends(get_db),
 ):
     database = db.get(Database, database_id)
     if not database:
         raise HTTPException(status_code=404, detail="Database not found")
-    return _serialize_tables(db, database_id)
+    return success_response(request, _serialize_tables(db, database_id))
 
 
-@router.post("/tables/extract", response_model=List[DatabaseTableRead])
+@router.post("/tables/extract", response_model=ApiResponse[List[DatabaseTableRead]])
 def extract_table_inventory(
-    request: TableInventoryExtractRequest,
+    payload: TableInventoryExtractRequest,
+    request: Request,
+    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
-    instance = db.get(DatabaseInstance, request.instance_id)
+    instance = db.get(DatabaseInstance, payload.instance_id)
     if not instance:
         raise HTTPException(status_code=404, detail="Database instance not found")
 
-    database = db.get(Database, request.database_id)
+    database = db.get(Database, payload.database_id)
     if not database:
         raise HTTPException(status_code=404, detail="Database not found")
 
@@ -90,7 +97,7 @@ def extract_table_inventory(
     try:
         dsn = build_dsn(instance, database.database_name)
         introspector = PostgresIntrospector(dsn)
-        inventory = introspector.get_table_inventory(request.schema)
+        inventory = introspector.get_table_inventory(payload.schema)
 
         created = 0
         updated = 0
@@ -99,7 +106,7 @@ def extract_table_inventory(
             existing = (
                 db.query(DatabaseTable)
                 .filter_by(
-                    database_id=request.database_id,
+                    database_id=payload.database_id,
                     schema_name=table["schema_name"],
                     table_name=table["table_name"],
                 )
@@ -112,7 +119,7 @@ def extract_table_inventory(
             else:
                 db.add(
                     DatabaseTable(
-                        database_id=request.database_id,
+                        database_id=payload.database_id,
                         schema_name=table["schema_name"],
                         table_name=table["table_name"],
                         table_type=table["table_type"],
@@ -127,7 +134,7 @@ def extract_table_inventory(
             "tables_found": len(inventory),
             "tables_created": created,
             "tables_updated": updated,
-            "schema": request.schema,
+            "schema": payload.schema,
         }
         db.commit()
     except Exception as e:
@@ -136,25 +143,27 @@ def extract_table_inventory(
         if run:
             run.status = "FAILED"
             run.ended_at = datetime.utcnow()
-            run.stats = {"error": str(e), "schema": request.schema}
+            run.stats = {"error": str(e), "schema": payload.schema}
             db.commit()
         raise HTTPException(status_code=500, detail=str(e))
 
-    return _serialize_tables(db, request.database_id)
+    return success_response(request, _serialize_tables(db, payload.database_id))
 
 
-@router.post("/tables/extract-details")
+@router.post("/tables/extract-details", response_model=ApiResponse[dict])
 def extract_table_details(
-    request: TableDetailsExtractRequest,
+    payload: TableDetailsExtractRequest,
+    request: Request,
+    _: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
-    instance = db.get(DatabaseInstance, request.instance_id)
+    instance = db.get(DatabaseInstance, payload.instance_id)
     if not instance:
         raise HTTPException(status_code=404, detail="Database instance not found")
 
     tables = (
         db.query(DatabaseTable)
-        .filter(DatabaseTable.id.in_(request.table_ids))
+        .filter(DatabaseTable.id.in_(payload.table_ids))
         .all()
     )
     if not tables:
@@ -255,12 +264,14 @@ def extract_table_details(
             db.commit()
         raise HTTPException(status_code=500, detail=str(e))
 
-    return {"tables_processed": processed}
+    return success_response(request, {"tables_processed": processed})
 
 
-@router.get("/tables/{table_id}", response_model=DatabaseTableDetailRead)
+@router.get("/tables/{table_id}", response_model=ApiResponse[DatabaseTableDetailRead])
 def get_table_details(
     table_id: UUID,
+    request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     db: Session = Depends(get_db),
 ):
     table = db.get(DatabaseTable, table_id)
@@ -298,9 +309,9 @@ def get_table_details(
         columns_count=len(columns),
     )
 
-    return DatabaseTableDetailRead(
+    return success_response(request, DatabaseTableDetailRead(
         table=table_read,
         columns=[TableColumnRead.model_validate(col) for col in columns],
         constraints=[TableConstraintRead.model_validate(c) for c in constraints],
         indexes=[TableIndexRead.model_validate(idx) for idx in indexes],
-    )
+    ))
