@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.api.responses import success_response
 from app.api.endpoints.database_instances import get_db
-from app.core.security import EDITOR_ROLES, require_roles
+from app.core.security import EDITOR_ROLES, VIEWER_ROLES, Principal, require_roles
 from app.models.core import SyncDefinition, SyncSource, SyncTarget, SyncKeyColumn, FieldMapping
 from app.models.inventory import DatabaseTable, TableColumn, SharePointList, SharePointColumn
 from app.schemas.api import ApiResponse, MessageResponse
@@ -15,6 +15,7 @@ from app.schemas.sync_definition import (
     SyncDefinitionRead,
     SyncDefinitionUpdate
 )
+from app.services.audit import record_audit_event
 
 router = APIRouter()
 
@@ -22,7 +23,7 @@ router = APIRouter()
 def create_sync_definition(
     def_in: SyncDefinitionCreate,
     request: Request,
-    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    principal: Principal = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     # 1. Create Parent
@@ -99,6 +100,15 @@ def create_sync_definition(
         db.commit()
         db.refresh(db_def)
         model = SyncDefinitionRead.model_validate(db_def)
+        record_audit_event(
+            db,
+            request,
+            principal,
+            action="sync_definition.create",
+            resource_type="sync_definition",
+            resource_id=str(db_def.id),
+            details={"name": db_def.name, "sync_mode": db_def.sync_mode},
+        )
         return success_response(request, model)
     except Exception as e:
         db.rollback()
@@ -107,6 +117,7 @@ def create_sync_definition(
 @router.get("/", response_model=ApiResponse[List[SyncDefinitionRead]])
 def list_sync_definitions(
     request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db)
@@ -144,6 +155,7 @@ def list_sync_definitions(
 def get_sync_definition(
     def_id: UUID,
     request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     db: Session = Depends(get_db)
 ):
     db_def = db.get(SyncDefinition, def_id)
@@ -174,7 +186,7 @@ def update_sync_definition(
     def_id: UUID,
     def_in: SyncDefinitionUpdate,
     request: Request,
-    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    principal: Principal = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     db_def = db.get(SyncDefinition, def_id)
@@ -187,13 +199,22 @@ def update_sync_definition(
     
     db.commit()
     db.refresh(db_def)
+    record_audit_event(
+        db,
+        request,
+        principal,
+        action="sync_definition.update",
+        resource_type="sync_definition",
+        resource_id=str(db_def.id),
+        details=update_data,
+    )
     return success_response(request, SyncDefinitionRead.model_validate(db_def))
 
 @router.delete("/{def_id}", response_model=ApiResponse[MessageResponse])
 def delete_sync_definition(
     def_id: UUID,
     request: Request,
-    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    principal: Principal = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     db_def = db.get(SyncDefinition, def_id)
@@ -202,4 +223,13 @@ def delete_sync_definition(
     
     db.delete(db_def)
     db.commit()
+    record_audit_event(
+        db,
+        request,
+        principal,
+        action="sync_definition.delete",
+        resource_type="sync_definition",
+        resource_id=str(def_id),
+        details={"name": db_def.name},
+    )
     return success_response(request, {"message": "Sync definition deleted"})

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, desc
 from app.api.responses import success_response
 from app.api.endpoints.database_instances import get_db
+from app.core.security import VIEWER_ROLES, Principal, require_roles
 from app.schemas.api import ApiResponse
 from app.models.core import SyncRun
 from pydantic import BaseModel
@@ -29,6 +30,7 @@ class SyncRunRead(BaseModel):
 @router.get("/", response_model=ApiResponse[List[SyncRunRead]])
 def list_runs(
     request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     skip: int = 0,
     limit: int = 50,
     sync_def_id: Optional[UUID] = None,

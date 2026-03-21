@@ -6,10 +6,11 @@ from sqlalchemy import select
 
 from app.api.responses import success_response
 from app.api.endpoints.database_instances import get_db
-from app.core.security import EDITOR_ROLES, require_roles
+from app.core.security import EDITOR_ROLES, VIEWER_ROLES, Principal, require_roles
 from app.models.core import FieldMapping, SyncDefinition
 from app.schemas.api import ApiResponse, MessageResponse
 from app.schemas.sync_definition import FieldMappingCreate, FieldMappingRead
+from app.services.audit import record_audit_event
 
 router = APIRouter()
 
@@ -18,7 +19,7 @@ def create_field_mapping(
     mapping_in: FieldMappingCreate,
     sync_def_id: UUID,
     request: Request,
-    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    principal: Principal = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     """Create a new field mapping for a sync definition."""
@@ -37,6 +38,15 @@ def create_field_mapping(
     try:
         db.commit()
         db.refresh(db_mapping)
+        record_audit_event(
+            db,
+            request,
+            principal,
+            action="field_mapping.create",
+            resource_type="field_mapping",
+            resource_id=str(db_mapping.id),
+            details={"sync_def_id": str(sync_def_id)},
+        )
         return success_response(request, db_mapping)
     except Exception as e:
         db.rollback()
@@ -46,6 +56,7 @@ def create_field_mapping(
 def list_field_mappings_by_sync_def(
     sync_def_id: UUID,
     request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     db: Session = Depends(get_db)
 ):
     """Get all field mappings for a specific sync definition."""
@@ -61,6 +72,7 @@ def list_field_mappings_by_sync_def(
 def get_field_mapping(
     mapping_id: UUID,
     request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     db: Session = Depends(get_db)
 ):
     """Get a specific field mapping by ID."""
@@ -74,7 +86,7 @@ def update_field_mapping(
     mapping_id: UUID,
     mapping_in: FieldMappingCreate,
     request: Request,
-    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    principal: Principal = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     """Update an existing field mapping."""
@@ -90,6 +102,15 @@ def update_field_mapping(
     try:
         db.commit()
         db.refresh(db_mapping)
+        record_audit_event(
+            db,
+            request,
+            principal,
+            action="field_mapping.update",
+            resource_type="field_mapping",
+            resource_id=str(db_mapping.id),
+            details={"sync_def_id": str(db_mapping.sync_def_id)},
+        )
         return success_response(request, db_mapping)
     except Exception as e:
         db.rollback()
@@ -99,7 +120,7 @@ def update_field_mapping(
 def delete_field_mapping(
     mapping_id: UUID,
     request: Request,
-    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    principal: Principal = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     """Delete a field mapping."""
@@ -109,6 +130,15 @@ def delete_field_mapping(
 
     db.delete(db_mapping)
     db.commit()
+    record_audit_event(
+        db,
+        request,
+        principal,
+        action="field_mapping.delete",
+        resource_type="field_mapping",
+        resource_id=str(mapping_id),
+        details={"sync_def_id": str(db_mapping.sync_def_id)},
+    )
     return success_response(request, {"message": "Field mapping deleted"})
 
 @router.post("/sync-definition/{sync_def_id}/bulk", response_model=ApiResponse[List[FieldMappingRead]])
@@ -116,7 +146,7 @@ def bulk_update_field_mappings(
     sync_def_id: UUID,
     mappings_in: List[FieldMappingCreate],
     request: Request,
-    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    principal: Principal = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     """
@@ -153,6 +183,15 @@ def bulk_update_field_mappings(
         db.commit()
         for mapping in new_mappings:
             db.refresh(mapping)
+        record_audit_event(
+            db,
+            request,
+            principal,
+            action="field_mapping.bulk_replace",
+            resource_type="sync_definition",
+            resource_id=str(sync_def_id),
+            details={"mapping_count": len(new_mappings)},
+        )
         return success_response(request, new_mappings)
     except Exception as e:
         db.rollback()

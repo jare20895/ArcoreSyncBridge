@@ -95,6 +95,7 @@ def test_auth_me_returns_disabled_mode_principal(monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert body["data"] == {
+        "user_id": None,
         "email": "system@local",
         "role": "platform_admin",
         "auth_mode": "disabled",
@@ -107,13 +108,14 @@ def test_auth_me_requires_headers_in_header_mode(monkeypatch):
     response = client.get("/api/v1/auth/me")
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "Authentication headers are required"
+    assert response.json()["detail"] == "Authentication email header is required"
 
 
-def test_auth_me_reads_header_principal(monkeypatch):
+def test_auth_me_reads_header_principal_and_provisions_user(monkeypatch):
     monkeypatch.setattr(settings, "AUTH_MODE", "header")
     monkeypatch.setattr(settings, "AUTH_HEADER_EMAIL", "X-User-Email")
     monkeypatch.setattr(settings, "AUTH_HEADER_ROLE", "X-User-Role")
+    monkeypatch.setattr(settings, "AUTH_AUTO_PROVISION_USERS", True)
 
     response = client.get(
         "/api/v1/auth/me",
@@ -124,15 +126,16 @@ def test_auth_me_reads_header_principal(monkeypatch):
     )
 
     assert response.status_code == 200
-    assert response.json()["data"] == {
-        "email": "architect@example.com",
-        "role": "admin",
-        "auth_mode": "header",
-    }
+    body = response.json()["data"]
+    assert body["email"] == "architect@example.com"
+    assert body["role"] == "admin"
+    assert body["auth_mode"] == "header"
+    assert body["user_id"]
 
 
 def test_auth_admin_check_enforces_roles(monkeypatch):
     monkeypatch.setattr(settings, "AUTH_MODE", "header")
+    monkeypatch.setattr(settings, "AUTH_AUTO_PROVISION_USERS", True)
 
     response = client.get(
         "/api/v1/auth/admin-check",
@@ -144,3 +147,44 @@ def test_auth_admin_check_enforces_roles(monkeypatch):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "You do not have permission to perform this action"
+
+
+def test_auth_users_admin_endpoints_use_persisted_roles(monkeypatch):
+    monkeypatch.setattr(settings, "AUTH_MODE", "header")
+    monkeypatch.setattr(settings, "AUTH_HEADER_EMAIL", "X-User-Email")
+    monkeypatch.setattr(settings, "AUTH_HEADER_ROLE", "X-User-Role")
+    monkeypatch.setattr(settings, "AUTH_AUTO_PROVISION_USERS", True)
+
+    create_response = client.post(
+        "/api/v1/auth/users",
+        json={
+            "email": "operator@example.com",
+            "display_name": "Operator",
+            "role": "operator",
+            "status": "ACTIVE",
+        },
+        headers={
+            "X-User-Email": "admin@example.com",
+            "X-User-Role": "platform_admin",
+        },
+    )
+    assert create_response.status_code == 201
+
+    list_response = client.get(
+        "/api/v1/auth/users",
+        headers={
+            "X-User-Email": "admin@example.com",
+            "X-User-Role": "platform_admin",
+        },
+    )
+    assert list_response.status_code == 200
+    assert len(list_response.json()["data"]) == 2
+
+
+def test_core_reads_require_authenticated_user_in_header_mode(monkeypatch):
+    monkeypatch.setattr(settings, "AUTH_MODE", "header")
+
+    response = client.get("/api/v1/applications/")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Authentication email header is required"

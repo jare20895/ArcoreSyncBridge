@@ -1,6 +1,6 @@
 from uuid import UUID
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select, delete
 from app.api.endpoints.database_instances import get_db
@@ -10,20 +10,31 @@ from app.services.drift import DriftService
 from app.services.failover import FailoverService
 from app.services.synchronizer import Synchronizer
 from app.services.pusher import Pusher
-from app.core.security import ADMIN_ROLES, OPERATOR_ROLES, require_roles
+from app.core.security import ADMIN_ROLES, OPERATOR_ROLES, Principal, require_roles
 from app.models.core import SyncDefinition, SyncCursor, SyncRun
+from app.services.audit import record_audit_event
 
 router = APIRouter()
 
 @router.post("/drift-report", response_model=DriftReportResponse)
 def generate_drift_report(
-    request: DriftReportRequest,
-    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    payload: DriftReportRequest,
+    request: Request,
+    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     service = DriftService(db)
     try:
-        report = service.generate_report(request.sync_def_id, request.check_type)
+        report = service.generate_report(payload.sync_def_id, payload.check_type)
+        record_audit_event(
+            db,
+            request=request,
+            principal=principal,
+            action="ops.drift_report",
+            resource_type="sync_definition",
+            resource_id=str(payload.sync_def_id),
+            details={"check_type": payload.check_type},
+        )
         return report
     except ValueError as e:
          raise HTTPException(status_code=400, detail=str(e))
@@ -32,13 +43,24 @@ def generate_drift_report(
 
 @router.post("/failover", response_model=FailoverResponse)
 def trigger_failover(
-    request: FailoverRequest,
-    _: None = Depends(require_roles(*ADMIN_ROLES)),
+    payload: FailoverRequest,
+    request: Request,
+    principal: Principal = Depends(require_roles(*ADMIN_ROLES)),
     db: Session = Depends(get_db)
 ):
     service = FailoverService(db)
     try:
-        return service.promote_to_primary(request.new_primary_instance_id, request.old_primary_instance_id)
+        result = service.promote_to_primary(payload.new_primary_instance_id, payload.old_primary_instance_id)
+        record_audit_event(
+            db,
+            request=request,
+            principal=principal,
+            action="ops.failover",
+            resource_type="database_instance",
+            resource_id=str(payload.new_primary_instance_id),
+            details={"old_primary_instance_id": str(payload.old_primary_instance_id) if payload.old_primary_instance_id else None},
+        )
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -47,7 +69,8 @@ def trigger_failover(
 @router.post("/sync/{sync_def_id}")
 def trigger_sync(
     sync_def_id: UUID,
-    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    request: Request,
+    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     """
@@ -130,17 +153,36 @@ def trigger_sync(
                 db.commit()
             results["ingress"] = {"error": str(e)}
 
+    record_audit_event(
+        db,
+        request=request,
+        principal=principal,
+        action="ops.sync.trigger",
+        resource_type="sync_definition",
+        resource_id=str(sync_def_id),
+        details={"modes": list(results.keys())},
+    )
     return results
 
 @router.post("/ingress/{sync_def_id}")
 def trigger_ingress(
     sync_def_id: UUID,
-    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    request: Request,
+    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     service = Synchronizer(db)
     try:
-        return service.run_ingress(sync_def_id)
+        result = service.run_ingress(sync_def_id)
+        record_audit_event(
+            db,
+            request=request,
+            principal=principal,
+            action="ops.ingress.trigger",
+            resource_type="sync_definition",
+            resource_id=str(sync_def_id),
+        )
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -149,7 +191,8 @@ def trigger_ingress(
 @router.delete("/sync/{sync_def_id}/cursors")
 def reset_cursors(
     sync_def_id: UUID,
-    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    request: Request,
+    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     """
@@ -168,10 +211,20 @@ def reset_cursors(
         db.commit()
 
         deleted_count = result.rowcount
-        return {
+        result = {
             "message": f"Reset {deleted_count} cursor(s) for sync definition",
             "deleted_count": deleted_count
         }
+        record_audit_event(
+            db,
+            request=request,
+            principal=principal,
+            action="ops.cursors.reset",
+            resource_type="sync_definition",
+            resource_id=str(sync_def_id),
+            details={"deleted_count": deleted_count},
+        )
+        return result
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to reset cursors: {str(e)}")

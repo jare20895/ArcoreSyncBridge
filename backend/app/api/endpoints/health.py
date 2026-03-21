@@ -13,10 +13,11 @@ from uuid import UUID
 from app.api.endpoints.database_instances import get_db
 from app.api.responses import success_response
 from app.core.config import settings
-from app.core.security import ADMIN_ROLES, OPERATOR_ROLES, require_roles
+from app.core.security import ADMIN_ROLES, OPERATOR_ROLES, Principal, require_roles
 from app.models.core import DatabaseInstance
 from app.schemas.api import ApiResponse
 from app.services.database import DatabaseClient
+from app.services.audit import record_audit_event
 import psycopg2
 
 router = APIRouter()
@@ -272,7 +273,7 @@ def get_database_stats(request: Request, db: Session = Depends(get_db)):
 def drop_replication_slot(
     payload: DropSlotRequest,
     request: Request,
-    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Drop a replication slot"""
@@ -356,6 +357,15 @@ def drop_replication_slot(
 
             conn.close()
 
+        record_audit_event(
+            db,
+            request,
+            principal,
+            action="health.replication_slot.drop",
+            resource_type="database_instance" if payload.instance_id else "system",
+            resource_id=payload.instance_id or payload.slot_name,
+            details={"slot_name": payload.slot_name, "force": payload.force},
+        )
         return success_response(request, {
             "success": True,
             "message": f"Successfully dropped replication slot: {payload.slot_name}"
@@ -370,7 +380,7 @@ def drop_replication_slot(
 def vacuum_table(
     payload: VacuumTableRequest,
     request: Request,
-    _: None = Depends(require_roles(*ADMIN_ROLES)),
+    principal: Principal = Depends(require_roles(*ADMIN_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Run VACUUM on a table"""
@@ -400,6 +410,15 @@ def vacuum_table(
 
         conn.close()
 
+        record_audit_event(
+            db,
+            request,
+            principal,
+            action="health.vacuum_table",
+            resource_type="database_table",
+            resource_id=f"{payload.schema}.{payload.table}",
+            details={"full": payload.full},
+        )
         return success_response(request, {
             "success": True,
             "message": f"Successfully ran {'VACUUM FULL' if payload.full else 'VACUUM'} on {payload.schema}.{payload.table}"

@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     AUTH_HEADER_EMAIL: str = "X-User-Email"
     AUTH_HEADER_ROLE: str = "X-User-Role"
     AUTH_DISABLED_ROLE: str = "platform_admin"
+    AUTH_DEFAULT_ROLE: str = "viewer"
+    AUTH_AUTO_PROVISION_USERS: bool = True
 
     @property
     def cors_allowed_origins(self) -> list[str]:

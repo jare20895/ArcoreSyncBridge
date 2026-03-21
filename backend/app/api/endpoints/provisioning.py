@@ -3,13 +3,14 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 from app.api.responses import success_response
 from app.api.endpoints.database_instances import get_db
-from app.core.security import ADMIN_ROLES, OPERATOR_ROLES, require_roles
+from app.core.security import ADMIN_ROLES, OPERATOR_ROLES, Principal, require_roles
 from app.models.core import SharePointConnection
 from app.schemas.api import ApiResponse
 from app.schemas.provisioning import ProvisionRequest, ProvisionResponse
 from app.services.graph import GraphClient
 from app.services.provisioner import SharePointProvisioner
 from app.services.secrets import resolve_sharepoint_client_secret
+from app.services.audit import record_audit_event
 from app.core.config import settings
 import jwt
 
@@ -19,7 +20,7 @@ router = APIRouter()
 def provision_sharepoint_list(
     payload: ProvisionRequest,
     request: Request,
-    _: None = Depends(require_roles(*OPERATOR_ROLES)),
+    principal: Principal = Depends(require_roles(*OPERATOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     # 1. Fetch Connection Details
@@ -112,6 +113,15 @@ def provision_sharepoint_list(
              list_rec.source_table_id = payload.table_id
 
         db.commit()
+        record_audit_event(
+            db,
+            request,
+            principal,
+            action="provisioning.list.create",
+            resource_type="sharepoint_list",
+            resource_id=list_guid,
+            details={"list_name": payload.list_name, "hostname": payload.hostname, "site_path": payload.site_path},
+        )
         
         return success_response(request, result)
 
@@ -143,7 +153,7 @@ def list_connections(
 def debug_token(
     connection_id: UUID,
     request: Request,
-    _: None = Depends(require_roles(*ADMIN_ROLES)),
+    principal: Principal = Depends(require_roles(*ADMIN_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Debug endpoint to check token permissions."""
@@ -170,7 +180,7 @@ def debug_token(
         # Decode token (without verification for debugging)
         decoded = jwt.decode(token, options={"verify_signature": False})
 
-        return success_response(request, {
+        payload = {
             "tenant_id": conn.tenant_id,
             "client_id": conn.client_id,
             "token_roles": decoded.get("roles", []),
@@ -179,6 +189,15 @@ def debug_token(
             "audience": decoded.get("aud"),
             "expires": decoded.get("exp"),
             "token_claim_keys": sorted(decoded.keys())
-        })
+        }
+        record_audit_event(
+            db,
+            request,
+            principal,
+            action="provisioning.token.debug",
+            resource_type="sharepoint_connection",
+            resource_id=str(connection_id),
+        )
+        return success_response(request, payload)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to debug token: {str(e)}")

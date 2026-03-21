@@ -36,6 +36,7 @@ from app.models.inventory import (
     SyncMetric,
     SyncEvent,
 )
+from app.models.platform import AppUser, AuditLog
 
 __all__ = [
     # Core
@@ -66,4 +67,6 @@ __all__ = [
     "SchemaSnapshot",
     "SyncMetric",
     "SyncEvent",
+    "AppUser",
+    "AuditLog",
 ]

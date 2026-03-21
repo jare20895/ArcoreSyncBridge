@@ -7,11 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.responses import success_response
-from app.core.security import EDITOR_ROLES, require_roles
+from app.core.security import EDITOR_ROLES, VIEWER_ROLES, Principal, require_roles
 from app.db.session import get_db
 from app.models.inventory import Database
 from app.schemas.api import ApiResponse, MessageResponse
 from app.schemas.database import DatabaseCreate, DatabaseUpdate, DatabaseResponse
+from app.services.audit import record_audit_event
 
 router = APIRouter()
 
@@ -19,6 +20,7 @@ router = APIRouter()
 @router.get("/", response_model=ApiResponse[List[DatabaseResponse]])
 def list_databases(
     request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     application_id: Optional[UUID] = Query(None, description="Filter by application ID"),
     db: Session = Depends(get_db)
 ):
@@ -33,7 +35,12 @@ def list_databases(
 
 
 @router.get("/{database_id}", response_model=ApiResponse[DatabaseResponse])
-def get_database(database_id: UUID, request: Request, db: Session = Depends(get_db)):
+def get_database(
+    database_id: UUID,
+    request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
+    db: Session = Depends(get_db),
+):
     """Get a specific database by ID."""
     database = db.get(Database, database_id)
     if not database:
@@ -45,7 +52,7 @@ def get_database(database_id: UUID, request: Request, db: Session = Depends(get_
 def create_database(
     database_data: DatabaseCreate,
     request: Request,
-    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    principal: Principal = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Create a new database."""
@@ -53,6 +60,15 @@ def create_database(
     db.add(database)
     db.commit()
     db.refresh(database)
+    record_audit_event(
+        db,
+        request,
+        principal,
+        action="database.create",
+        resource_type="database",
+        resource_id=str(database.id),
+        details=database_data.model_dump(),
+    )
     return success_response(request, database)
 
 
@@ -61,7 +77,7 @@ def update_database(
     database_id: UUID,
     database_data: DatabaseUpdate,
     request: Request,
-    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    principal: Principal = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Update an existing database."""
@@ -76,6 +92,15 @@ def update_database(
 
     db.commit()
     db.refresh(database)
+    record_audit_event(
+        db,
+        request,
+        principal,
+        action="database.update",
+        resource_type="database",
+        resource_id=str(database.id),
+        details=update_data,
+    )
     return success_response(request, database)
 
 
@@ -83,7 +108,7 @@ def update_database(
 def delete_database(
     database_id: UUID,
     request: Request,
-    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    principal: Principal = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Delete a database."""
@@ -93,4 +118,13 @@ def delete_database(
 
     db.delete(database)
     db.commit()
+    record_audit_event(
+        db,
+        request,
+        principal,
+        action="database.delete",
+        resource_type="database",
+        resource_id=str(database_id),
+        details={"name": database.name},
+    )
     return success_response(request, {"message": "Database deleted"})

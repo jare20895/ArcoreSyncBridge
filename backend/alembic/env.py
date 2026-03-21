@@ -14,7 +14,7 @@ from alembic import context
 
 # Import your models here
 from app.db.base import Base
-from app.models import core # Ensure models are registered
+from app import models  # Ensure models are registered
 from app.core.config import settings
 
 config = context.config

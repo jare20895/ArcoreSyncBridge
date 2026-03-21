@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, text
 
 from app.api.responses import success_response
-from app.core.security import EDITOR_ROLES, OPERATOR_ROLES, require_roles
+from app.core.security import EDITOR_ROLES, OPERATOR_ROLES, VIEWER_ROLES, Principal, require_roles
 from app.db.base import Base
 # In a real app, we would use a get_db dependency
 # For now, I'll mock the DB session or create a basic one if needed.
@@ -22,6 +22,7 @@ from app.schemas.database_instance import (
 from app.schemas.api import ApiResponse, MessageResponse
 from app.schemas.introspection import SchemaSnapshot
 from app.services.introspection import introspect_database
+from app.services.audit import record_audit_event
 from app.db.session import get_db
 
 router = APIRouter()
@@ -30,7 +31,7 @@ router = APIRouter()
 def create_database_instance(
     instance: DatabaseInstanceCreate,
     request: Request,
-    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    principal: Principal = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     db_instance = DatabaseInstance(**instance.model_dump())
@@ -38,6 +39,15 @@ def create_database_instance(
         db.add(db_instance)
         db.commit()
         db.refresh(db_instance)
+        record_audit_event(
+            db,
+            request,
+            principal,
+            action="database_instance.create",
+            resource_type="database_instance",
+            resource_id=str(db_instance.id),
+            details=instance.model_dump(exclude={"password"}),
+        )
         return success_response(request, db_instance)
     except Exception as e:
         db.rollback()
@@ -46,6 +56,7 @@ def create_database_instance(
 @router.get("/", response_model=ApiResponse[List[DatabaseInstanceRead]])
 def list_database_instances(
     request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db)
@@ -58,6 +69,7 @@ def list_database_instances(
 def get_database_instance(
     instance_id: UUID,
     request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     db: Session = Depends(get_db)
 ):
     db_instance = db.get(DatabaseInstance, instance_id)
@@ -70,7 +82,7 @@ def update_database_instance(
     instance_id: UUID,
     instance_update: DatabaseInstanceUpdate,
     request: Request,
-    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    principal: Principal = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     db_instance = db.get(DatabaseInstance, instance_id)
@@ -84,6 +96,15 @@ def update_database_instance(
     try:
         db.commit()
         db.refresh(db_instance)
+        record_audit_event(
+            db,
+            request,
+            principal,
+            action="database_instance.update",
+            resource_type="database_instance",
+            resource_id=str(db_instance.id),
+            details=update_data,
+        )
         return success_response(request, db_instance)
     except Exception as e:
         db.rollback()
@@ -93,7 +114,7 @@ def update_database_instance(
 def delete_database_instance(
     instance_id: UUID,
     request: Request,
-    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    principal: Principal = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db)
 ):
     db_instance = db.get(DatabaseInstance, instance_id)
@@ -102,6 +123,15 @@ def delete_database_instance(
 
     db.delete(db_instance)
     db.commit()
+    record_audit_event(
+        db,
+        request,
+        principal,
+        action="database_instance.delete",
+        resource_type="database_instance",
+        resource_id=str(instance_id),
+        details={"instance_label": db_instance.instance_label},
+    )
     return success_response(request, {"message": "Database instance deleted"})
 
 @router.post("/test-connection", response_model=ConnectionTestResult)

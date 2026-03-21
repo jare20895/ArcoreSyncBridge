@@ -7,24 +7,34 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.responses import success_response
-from app.core.security import EDITOR_ROLES, require_roles
+from app.core.security import EDITOR_ROLES, VIEWER_ROLES, Principal, require_roles
 from app.db.session import get_db
 from app.models.inventory import Application
 from app.schemas.api import ApiResponse, MessageResponse
 from app.schemas.application import ApplicationCreate, ApplicationUpdate, ApplicationResponse
+from app.services.audit import record_audit_event
 
 router = APIRouter()
 
 
 @router.get("/", response_model=ApiResponse[List[ApplicationResponse]])
-def list_applications(request: Request, db: Session = Depends(get_db)):
+def list_applications(
+    request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
+    db: Session = Depends(get_db),
+):
     """List all applications."""
     applications = db.query(Application).order_by(Application.name).all()
     return success_response(request, applications)
 
 
 @router.get("/{application_id}", response_model=ApiResponse[ApplicationResponse])
-def get_application(application_id: UUID, request: Request, db: Session = Depends(get_db)):
+def get_application(
+    application_id: UUID,
+    request: Request,
+    _: Principal = Depends(require_roles(*VIEWER_ROLES)),
+    db: Session = Depends(get_db),
+):
     """Get a specific application by ID."""
     application = db.get(Application, application_id)
     if not application:
@@ -36,7 +46,7 @@ def get_application(application_id: UUID, request: Request, db: Session = Depend
 def create_application(
     application_data: ApplicationCreate,
     request: Request,
-    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    principal: Principal = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Create a new application."""
@@ -44,6 +54,15 @@ def create_application(
     db.add(application)
     db.commit()
     db.refresh(application)
+    record_audit_event(
+        db,
+        request,
+        principal,
+        action="application.create",
+        resource_type="application",
+        resource_id=str(application.id),
+        details=application_data.model_dump(),
+    )
     return success_response(request, application)
 
 
@@ -52,7 +71,7 @@ def update_application(
     application_id: UUID,
     application_data: ApplicationUpdate,
     request: Request,
-    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    principal: Principal = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Update an existing application."""
@@ -67,6 +86,15 @@ def update_application(
 
     db.commit()
     db.refresh(application)
+    record_audit_event(
+        db,
+        request,
+        principal,
+        action="application.update",
+        resource_type="application",
+        resource_id=str(application.id),
+        details=update_data,
+    )
     return success_response(request, application)
 
 
@@ -74,7 +102,7 @@ def update_application(
 def delete_application(
     application_id: UUID,
     request: Request,
-    _: None = Depends(require_roles(*EDITOR_ROLES)),
+    principal: Principal = Depends(require_roles(*EDITOR_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Delete an application."""
@@ -84,4 +112,13 @@ def delete_application(
 
     db.delete(application)
     db.commit()
+    record_audit_event(
+        db,
+        request,
+        principal,
+        action="application.delete",
+        resource_type="application",
+        resource_id=str(application_id),
+        details={"name": application.name},
+    )
     return success_response(request, {"message": "Application deleted"})
