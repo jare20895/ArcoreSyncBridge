@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { getCdcHealth, getDatabaseStats } from '../services/api';
 import { Trash2, RefreshCw, Database, HardDrive, AlertTriangle, CheckCircle, Play, Settings } from 'lucide-react';
+import { useToast } from './ui/ToastProvider';
+import { useConfirmDialog } from './ui/ConfirmDialogProvider';
 
 interface SlotData {
   slot_name: string;
@@ -27,6 +29,8 @@ interface TableData {
 }
 
 export default function CdcManagement() {
+  const { showToast } = useToast();
+  const { confirm } = useConfirmDialog();
   const [health, setHealth] = useState<any>(null);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -34,7 +38,7 @@ export default function CdcManagement() {
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
   const [selectedTables, setSelectedTables] = useState<Set<string>>(new Set());
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       const [healthData, statsData] = await Promise.all([
@@ -45,14 +49,19 @@ export default function CdcManagement() {
       setStats(statsData);
     } catch (err) {
       console.error('Error fetching CDC data:', err);
+      showToast({
+        title: 'CDC data load failed',
+        description: 'Failed to fetch CDC health and database statistics.',
+        variant: 'error',
+      });
     } finally {
       setLoading(false);
     }
-  };
+  }, [showToast]);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    void fetchData();
+  }, [fetchData]);
 
   const handleDropSlot = async (slotName: string, force: boolean = false) => {
     const slot = health?.slots?.find((s: SlotData) => s.slot_name === slotName);
@@ -65,7 +74,13 @@ export default function CdcManagement() {
     }
     message += '\n\nThis action cannot be undone.';
 
-    if (!confirm(message)) {
+    const confirmed = await confirm({
+      title: force ? `Force drop slot ${slotName}?` : `Drop slot ${slotName}?`,
+      description: message,
+      confirmLabel: force ? 'Force drop' : 'Drop slot',
+      tone: 'danger',
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -78,20 +93,38 @@ export default function CdcManagement() {
       });
 
       if (response.ok) {
-        alert(`Successfully dropped slot: ${slotName}`);
+        showToast({
+          title: 'Slot dropped',
+          description: `Successfully dropped slot: ${slotName}`,
+          variant: 'success',
+        });
         await fetchData();
       } else if (response.status === 409) {
         // Slot is active, ask if user wants to force
         const error = await response.json();
-        if (confirm(`${error.detail}\n\nDo you want to force-drop this slot by terminating the connection?`)) {
+        const forceConfirmed = await confirm({
+          title: 'Force drop active slot?',
+          description: `${error.detail}\n\nDo you want to force-drop this slot by terminating the connection?`,
+          confirmLabel: 'Force drop',
+          tone: 'danger',
+        });
+        if (forceConfirmed) {
           await handleDropSlot(slotName, true);
         }
       } else {
         const error = await response.json();
-        alert(`Failed to drop slot: ${error.detail || 'Unknown error'}`);
+        showToast({
+          title: 'Slot drop failed',
+          description: error.detail || 'Unknown error',
+          variant: 'error',
+        });
       }
     } catch (err: any) {
-      alert(`Error dropping slot: ${err.message}`);
+      showToast({
+        title: 'Slot drop failed',
+        description: err.message,
+        variant: 'error',
+      });
     } finally {
       setActionLoading(null);
     }
@@ -99,7 +132,11 @@ export default function CdcManagement() {
 
   const handleDropSelectedSlots = async () => {
     if (selectedSlots.size === 0) {
-      alert('Please select at least one slot to drop');
+      showToast({
+        title: 'No slots selected',
+        description: 'Please select at least one slot to drop.',
+        variant: 'info',
+      });
       return;
     }
 
@@ -114,7 +151,13 @@ export default function CdcManagement() {
     }
     message += '\n\nThis action cannot be undone.';
 
-    if (!confirm(message)) {
+    const confirmed = await confirm({
+      title: `Drop ${selectedSlots.size} slot(s)?`,
+      description: message,
+      confirmLabel: 'Drop selected',
+      tone: 'danger',
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -145,11 +188,19 @@ export default function CdcManagement() {
         }
       }
 
-      alert(`Dropped ${successCount} slot(s) successfully${failCount > 0 ? `, ${failCount} failed` : ''}`);
+      showToast({
+        title: 'Slot cleanup complete',
+        description: `Dropped ${successCount} slot(s) successfully${failCount > 0 ? `, ${failCount} failed` : ''}`,
+        variant: failCount > 0 ? 'info' : 'success',
+      });
       setSelectedSlots(new Set());
       await fetchData();
     } catch (err: any) {
-      alert(`Error dropping slots: ${err.message}`);
+      showToast({
+        title: 'Bulk slot drop failed',
+        description: err.message,
+        variant: 'error',
+      });
     } finally {
       setActionLoading(null);
     }
@@ -157,7 +208,13 @@ export default function CdcManagement() {
 
   const handleVacuumTable = async (schema: string, table: string, full: boolean = false) => {
     const vacuumType = full ? 'VACUUM FULL' : 'VACUUM';
-    if (!confirm(`Are you sure you want to run ${vacuumType} on ${schema}.${table}? ${full ? 'This will lock the table and may take a while.' : ''}`)) {
+    const confirmed = await confirm({
+      title: `Run ${vacuumType}?`,
+      description: `Are you sure you want to run ${vacuumType} on ${schema}.${table}? ${full ? 'This will lock the table and may take a while.' : ''}`,
+      confirmLabel: vacuumType,
+      tone: 'danger',
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -170,14 +227,26 @@ export default function CdcManagement() {
       });
 
       if (response.ok) {
-        alert(`Successfully ran ${vacuumType} on ${schema}.${table}`);
+        showToast({
+          title: `${vacuumType} completed`,
+          description: `Successfully ran ${vacuumType} on ${schema}.${table}`,
+          variant: 'success',
+        });
         await fetchData();
       } else {
         const error = await response.json();
-        alert(`Failed to vacuum table: ${error.detail || 'Unknown error'}`);
+        showToast({
+          title: `${vacuumType} failed`,
+          description: error.detail || 'Unknown error',
+          variant: 'error',
+        });
       }
     } catch (err: any) {
-      alert(`Error vacuuming table: ${err.message}`);
+      showToast({
+        title: `${vacuumType} failed`,
+        description: err.message,
+        variant: 'error',
+      });
     } finally {
       setActionLoading(null);
     }
@@ -185,12 +254,22 @@ export default function CdcManagement() {
 
   const handleVacuumSelectedTables = async (full: boolean = false) => {
     if (selectedTables.size === 0) {
-      alert('Please select at least one table to vacuum');
+      showToast({
+        title: 'No tables selected',
+        description: 'Please select at least one table to vacuum.',
+        variant: 'info',
+      });
       return;
     }
 
     const vacuumType = full ? 'VACUUM FULL' : 'VACUUM';
-    if (!confirm(`Are you sure you want to run ${vacuumType} on ${selectedTables.size} table(s)? ${full ? 'This will lock the tables and may take a while.' : ''}`)) {
+    const confirmed = await confirm({
+      title: `Run ${vacuumType} on ${selectedTables.size} table(s)?`,
+      description: `Are you sure you want to run ${vacuumType} on ${selectedTables.size} table(s)? ${full ? 'This will lock the tables and may take a while.' : ''}`,
+      confirmLabel: vacuumType,
+      tone: 'danger',
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -204,11 +283,19 @@ export default function CdcManagement() {
           body: JSON.stringify({ schema, table, full })
         });
       }
-      alert(`Successfully vacuumed ${selectedTables.size} table(s)`);
+      showToast({
+        title: `${vacuumType} completed`,
+        description: `Successfully vacuumed ${selectedTables.size} table(s)`,
+        variant: 'success',
+      });
       setSelectedTables(new Set());
       await fetchData();
     } catch (err: any) {
-      alert(`Error vacuuming tables: ${err.message}`);
+      showToast({
+        title: `Bulk ${vacuumType} failed`,
+        description: err.message,
+        variant: 'error',
+      });
     } finally {
       setActionLoading(null);
     }

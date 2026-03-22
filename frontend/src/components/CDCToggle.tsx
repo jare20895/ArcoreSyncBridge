@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Zap, ZapOff } from 'lucide-react';
 import { enableCDC, disableCDC } from '../services/api';
+import { useToast } from './ui/ToastProvider';
 
 interface CDCToggleProps {
     syncDefId: string;
@@ -9,6 +10,7 @@ interface CDCToggleProps {
 }
 
 export default function CDCToggle({ syncDefId, cdcEnabled = false, onToggle }: CDCToggleProps) {
+    const { showToast } = useToast();
     const [loading, setLoading] = useState(false);
 
     const handleToggle = async () => {
@@ -16,10 +18,18 @@ export default function CDCToggle({ syncDefId, cdcEnabled = false, onToggle }: C
         try {
             if (cdcEnabled) {
                 await disableCDC(syncDefId);
-                alert('CDC disabled successfully!');
+                showToast({
+                    title: 'CDC disabled',
+                    description: 'Real-time database change capture is now off.',
+                    variant: 'success',
+                });
             } else {
                 await enableCDC(syncDefId);
-                alert('CDC enabled successfully!\n\nChanges to the database will now be pushed to SharePoint in real-time.');
+                showToast({
+                    title: 'CDC enabled',
+                    description: 'Database changes will now be pushed to SharePoint in real time.',
+                    variant: 'success',
+                });
             }
             if (onToggle) onToggle();
         } catch (e: any) {
@@ -28,7 +38,11 @@ export default function CDCToggle({ syncDefId, cdcEnabled = false, onToggle }: C
             const errorMsg = e.response?.status === 404
                 ? 'CDC feature is not yet available (coming in Epic 5)'
                 : (e.response?.data?.detail || e.message);
-            alert('Failed to toggle CDC: ' + errorMsg);
+            showToast({
+                title: 'CDC update failed',
+                description: errorMsg,
+                variant: 'error',
+            });
         } finally {
             setLoading(false);
         }

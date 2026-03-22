@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, Calendar, Play, Pause, Trash2 } from 'lucide-react';
 import { enableSchedule, disableSchedule, deleteSchedule, getScheduleAudit } from '../services/api';
+import { useToast } from './ui/ToastProvider';
+import { useConfirmDialog } from './ui/ConfirmDialogProvider';
 
 interface ScheduleConfigProps {
     syncDefId: string;
@@ -16,6 +18,8 @@ interface ScheduleConfigProps {
 }
 
 export default function ScheduleConfig({ syncDefId, currentConfig, onSave }: ScheduleConfigProps) {
+    const { showToast } = useToast();
+    const { confirm } = useConfirmDialog();
     const [scheduleType, setScheduleType] = useState<'INTERVAL' | 'CRON'>('INTERVAL');
     const [intervalMinutes, setIntervalMinutes] = useState<number>(5);
     const [cronExpression, setCronExpression] = useState<string>('0 0 * * *');
@@ -51,11 +55,19 @@ export default function ScheduleConfig({ syncDefId, currentConfig, onSave }: Sch
                 timezone
             };
             await enableSchedule(syncDefId, config);
-            alert('Schedule enabled successfully!');
+            showToast({
+                title: isEnabled ? 'Schedule updated' : 'Schedule enabled',
+                description: 'The sync schedule configuration was saved.',
+                variant: 'success',
+            });
             if (onSave) onSave();
         } catch (e: any) {
             console.error(e);
-            alert('Failed to enable schedule: ' + (e.response?.data?.detail || e.message));
+            showToast({
+                title: 'Schedule save failed',
+                description: e.response?.data?.detail || e.message,
+                variant: 'error',
+            });
         } finally {
             setLoading(false);
         }
@@ -65,26 +77,48 @@ export default function ScheduleConfig({ syncDefId, currentConfig, onSave }: Sch
         setLoading(true);
         try {
             await disableSchedule(syncDefId);
-            alert('Schedule disabled successfully!');
+            showToast({
+                title: 'Schedule disabled',
+                description: 'Automatic sync execution is now paused.',
+                variant: 'success',
+            });
             if (onSave) onSave();
         } catch (e: any) {
             console.error(e);
-            alert('Failed to disable schedule: ' + (e.response?.data?.detail || e.message));
+            showToast({
+                title: 'Disable failed',
+                description: e.response?.data?.detail || e.message,
+                variant: 'error',
+            });
         } finally {
             setLoading(false);
         }
     };
 
     const handleDelete = async () => {
-        if (!confirm('Are you sure you want to delete this schedule?')) return;
+        const confirmed = await confirm({
+            title: 'Delete schedule?',
+            description: 'Remove this schedule configuration and stop future automated runs.',
+            confirmLabel: 'Delete schedule',
+            tone: 'danger',
+        });
+        if (!confirmed) return;
         setLoading(true);
         try {
             await deleteSchedule(syncDefId);
-            alert('Schedule deleted successfully!');
+            showToast({
+                title: 'Schedule deleted',
+                description: 'The schedule configuration was removed.',
+                variant: 'success',
+            });
             if (onSave) onSave();
         } catch (e: any) {
             console.error(e);
-            alert('Failed to delete schedule: ' + (e.response?.data?.detail || e.message));
+            showToast({
+                title: 'Delete failed',
+                description: e.response?.data?.detail || e.message,
+                variant: 'error',
+            });
         } finally {
             setLoading(false);
         }
@@ -97,7 +131,11 @@ export default function ScheduleConfig({ syncDefId, currentConfig, onSave }: Sch
             setShowAudit(true);
         } catch (e) {
             console.error(e);
-            alert('Failed to load audit logs');
+            showToast({
+                title: 'Audit log load failed',
+                description: 'Failed to load schedule audit logs.',
+                variant: 'error',
+            });
         }
     };
 
