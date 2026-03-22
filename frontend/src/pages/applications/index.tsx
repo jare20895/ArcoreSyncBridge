@@ -1,33 +1,47 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Edit, Trash2 } from 'lucide-react';
-import { getApplications, deleteApplication } from '../../services/api';
+import { getApplicationsPage, deleteApplication } from '../../services/api';
 import { useToast } from '../../components/ui/ToastProvider';
 import { useConfirmDialog } from '../../components/ui/ConfirmDialogProvider';
 import { getErrorMessage } from '../../lib/errors';
+
+const PAGE_SIZE = 20;
 
 export default function ApplicationsPage() {
   const { showToast } = useToast();
   const { confirm } = useConfirmDialog();
   const [applications, setApplications] = useState<any[]>([]);
+  const [meta, setMeta] = useState<{ total?: number; offset?: number }>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(0);
 
-  useEffect(() => {
-    loadApplications();
-  }, []);
-
-  const loadApplications = async () => {
+  const loadApplications = useCallback(async () => {
+    setLoading(true);
     try {
-      const data = await getApplications();
-      setApplications(data);
+      const response = await getApplicationsPage({
+        q: search || undefined,
+        status: statusFilter || undefined,
+        offset: page * PAGE_SIZE,
+        limit: PAGE_SIZE,
+      });
+      setApplications(response.data);
+      setMeta(response.meta ?? {});
+      setError('');
     } catch (err) {
       console.error(err);
       setError('Failed to load applications');
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, search, statusFilter]);
+
+  useEffect(() => {
+    void loadApplications();
+  }, [loadApplications]);
 
   const handleDelete = async (id: string, name: string) => {
     const confirmed = await confirm({
@@ -47,7 +61,7 @@ export default function ApplicationsPage() {
         description: `${name} was removed successfully.`,
         variant: 'success'
       });
-      loadApplications();
+      void loadApplications();
     } catch (err: any) {
       showToast({
         title: 'Delete failed',
@@ -64,6 +78,9 @@ export default function ApplicationsPage() {
       </div>
     );
   }
+
+  const hasPrevious = page > 0;
+  const hasNext = (meta.offset ?? 0) + applications.length < (meta.total ?? applications.length);
 
   return (
     <div className="p-8">
@@ -84,6 +101,30 @@ export default function ApplicationsPage() {
       </div>
 
       {error && <div className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 p-3 rounded mb-4">{error}</div>}
+
+      <div className="mb-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+        <input
+          value={search}
+          onChange={(event) => {
+            setPage(0);
+            setSearch(event.target.value);
+          }}
+          placeholder="Search name, owner team, or description"
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+        />
+        <select
+          value={statusFilter}
+          onChange={(event) => {
+            setPage(0);
+            setStatusFilter(event.target.value);
+          }}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+        >
+          <option value="">All statuses</option>
+          <option value="ACTIVE">ACTIVE</option>
+          <option value="ARCHIVED">ARCHIVED</option>
+        </select>
+      </div>
 
       <div className="bg-light-surface dark:bg-dark-surface border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -149,6 +190,28 @@ export default function ApplicationsPage() {
             )}
           </tbody>
         </table>
+        <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4 text-sm dark:border-gray-700">
+          <div className="text-light-text-secondary dark:text-dark-text-secondary">
+            Showing {(meta.offset ?? 0) + (applications.length > 0 ? 1 : 0)}-{(meta.offset ?? 0) + applications.length} of{' '}
+            {meta.total ?? applications.length}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((current) => Math.max(0, current - 1))}
+              disabled={!hasPrevious}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-light-text-primary transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-dark-text-primary dark:hover:bg-gray-900"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage((current) => current + 1)}
+              disabled={!hasNext}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-light-text-primary transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-dark-text-primary dark:hover:bg-gray-900"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

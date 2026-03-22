@@ -37,6 +37,41 @@ def test_read_database_instances():
     data = response.json()
     assert len(data["data"]) > 0
 
+def test_read_database_instances_supports_filters_and_pagination():
+    client.post(
+        "/api/v1/database-instances/",
+        json={
+            "instance_label": "primary-east",
+            "host": "east.local",
+            "port": 5432,
+            "role": "PRIMARY",
+            "status": "ACTIVE",
+        },
+    )
+    client.post(
+        "/api/v1/database-instances/",
+        json={
+            "instance_label": "replica-west",
+            "host": "west.local",
+            "port": 5432,
+            "role": "REPLICA",
+            "status": "DISABLED",
+        },
+    )
+
+    response = client.get(
+        "/api/v1/database-instances/",
+        params={"q": "west", "role": "REPLICA", "status": "DISABLED", "limit": 1, "offset": 0},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"]["total"] == 1
+    assert body["meta"]["limit"] == 1
+    assert body["meta"]["offset"] == 0
+    assert len(body["data"]) == 1
+    assert body["data"][0]["instance_label"] == "replica-west"
+
 def test_read_database_instance():
     # Create one first
     create_res = client.post(

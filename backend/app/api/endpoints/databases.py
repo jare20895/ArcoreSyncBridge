@@ -22,6 +22,11 @@ def list_databases(
     request: Request,
     _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     application_id: Optional[UUID] = Query(None, description="Filter by application ID"),
+    q: Optional[str] = Query(None, description="Search by database name or physical database name"),
+    environment: Optional[str] = Query(None, description="Filter by environment"),
+    status: Optional[str] = Query(None, description="Filter by status"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db)
 ):
     """List all databases, optionally filtered by application."""
@@ -29,9 +34,20 @@ def list_databases(
 
     if application_id:
         query = query.filter(Database.application_id == application_id)
+    if q:
+        search = f"%{q.strip()}%"
+        query = query.filter(
+            Database.name.ilike(search)
+            | Database.database_name.ilike(search)
+        )
+    if environment:
+        query = query.filter(Database.environment == environment)
+    if status:
+        query = query.filter(Database.status == status)
 
-    databases = query.order_by(Database.name).all()
-    return success_response(request, databases)
+    total = query.count()
+    databases = query.order_by(Database.name).offset(offset).limit(limit).all()
+    return success_response(request, databases, meta={"total": total, "limit": limit, "offset": offset})
 
 
 @router.get("/{database_id}", response_model=ApiResponse[DatabaseResponse])

@@ -49,6 +49,16 @@ export const getApplications = async (): Promise<any[]> => {
   return unwrapData<any[]>(res.data);
 };
 
+export const getApplicationsPage = async (params?: {
+  q?: string;
+  status?: string;
+  offset?: number;
+  limit?: number;
+}): Promise<ApiEnvelope<any[]>> => {
+  const res = await api.get('/applications/', { params });
+  return unwrapEnvelope<any[]>(res.data);
+};
+
 export const getApplication = async (id: string): Promise<any> => {
   const res = await api.get(`/applications/${id}`);
   return unwrapData<any>(res.data);
@@ -76,6 +86,18 @@ export const getDatabases = async (applicationId?: string): Promise<any[]> => {
   return unwrapData<any[]>(res.data);
 };
 
+export const getDatabasesPage = async (params?: {
+  application_id?: string;
+  q?: string;
+  environment?: string;
+  status?: string;
+  offset?: number;
+  limit?: number;
+}): Promise<ApiEnvelope<any[]>> => {
+  const res = await api.get('/databases/', { params });
+  return unwrapEnvelope<any[]>(res.data);
+};
+
 export const getDatabase = async (id: string): Promise<any> => {
   const res = await api.get(`/databases/${id}`);
   return unwrapData<any>(res.data);
@@ -100,6 +122,18 @@ export const deleteDatabase = async (id: string) => {
 export const getDatabaseInstances = async (): Promise<any[]> => {
   const res = await api.get('/database-instances/');
   return unwrapData<any[]>(res.data);
+};
+
+export const getDatabaseInstancesPage = async (params?: {
+  database_id?: string;
+  q?: string;
+  role?: string;
+  status?: string;
+  offset?: number;
+  limit?: number;
+}): Promise<ApiEnvelope<any[]>> => {
+  const res = await api.get('/database-instances/', { params });
+  return unwrapEnvelope<any[]>(res.data);
 };
 
 export const createDatabaseInstance = async (data: any) => {
@@ -296,6 +330,17 @@ export const getCurrentUser = async (): Promise<any> => {
 export const getSyncRuns = async () => {
   const res = await api.get('/runs/');
   return unwrapData<any[]>(res.data);
+};
+
+export const getSyncRunsPage = async (params?: {
+  sync_def_id?: string;
+  status?: string;
+  run_type?: string;
+  offset?: number;
+  limit?: number;
+}): Promise<ApiEnvelope<any[]>> => {
+  const res = await api.get('/runs/', { params });
+  return unwrapEnvelope<any[]>(res.data);
 };
 
 // Schedules

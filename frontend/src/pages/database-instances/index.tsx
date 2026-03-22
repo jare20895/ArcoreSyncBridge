@@ -1,31 +1,42 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { getDatabaseInstances, triggerFailover, deleteDatabaseInstance, getDatabases } from '../../services/api';
+import { getDatabaseInstancesPage, triggerFailover, deleteDatabaseInstance, getDatabases } from '../../services/api';
 import { Database, ShieldAlert, ArrowRight, Edit, Trash2 } from 'lucide-react';
 import { useToast } from '../../components/ui/ToastProvider';
 import { useConfirmDialog } from '../../components/ui/ConfirmDialogProvider';
 import { getErrorMessage } from '../../lib/errors';
 
+const PAGE_SIZE = 20;
+
 export default function DatabaseInstancesList() {
   const { showToast } = useToast();
   const { confirm } = useConfirmDialog();
   const [dbs, setDbs] = useState<any[]>([]);
+  const [meta, setMeta] = useState<{ total?: number; offset?: number }>({});
   const [databases, setDatabases] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
   const [failoverTarget, setFailoverTarget] = useState<any>(null); // Instance being promoted
   const [primaryToFail, setPrimaryToFail] = useState<string>('');
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(0);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    setLoading(true);
     try {
-      const [instances, databasesData] = await Promise.all([
-        getDatabaseInstances(),
+      const [instancesResponse, databasesData] = await Promise.all([
+        getDatabaseInstancesPage({
+          q: search || undefined,
+          role: roleFilter || undefined,
+          status: statusFilter || undefined,
+          offset: page * PAGE_SIZE,
+          limit: PAGE_SIZE,
+        }),
         getDatabases()
       ]);
-      setDbs(instances);
+      setDbs(instancesResponse.data);
+      setMeta(instancesResponse.meta ?? {});
 
       // Create a map of databases by ID for easy lookup
       const dbMap = databasesData.reduce((acc: Record<string, any>, db: any) => {
@@ -35,11 +46,17 @@ export default function DatabaseInstancesList() {
       setDatabases(dbMap);
     } catch (err) {
       console.error(err);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [page, roleFilter, search, statusFilter]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
   const loadDbs = () => {
-    getDatabaseInstances().then(setDbs).catch(console.error);
+    void loadData();
   };
 
   const handleFailover = async () => {
@@ -96,6 +113,8 @@ export default function DatabaseInstancesList() {
 
   // Find current primary for default selection in modal
   const currentPrimary = dbs.find(d => d.role === 'PRIMARY');
+  const hasPrevious = page > 0;
+  const hasNext = (meta.offset ?? 0) + dbs.length < (meta.total ?? dbs.length);
 
   return (
     <div className="space-y-6">
@@ -107,6 +126,44 @@ export default function DatabaseInstancesList() {
         <Link href="/database-instances/new" className="bg-light-primary dark:bg-dark-primary text-white px-4 py-2 rounded shadow-sm hover:bg-opacity-90">
           Register New Instance
         </Link>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
+        <input
+          value={search}
+          onChange={(event) => {
+            setPage(0);
+            setSearch(event.target.value);
+          }}
+          placeholder="Search label, host, or database"
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+        />
+        <select
+          value={roleFilter}
+          onChange={(event) => {
+            setPage(0);
+            setRoleFilter(event.target.value);
+          }}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+        >
+          <option value="">All roles</option>
+          <option value="PRIMARY">PRIMARY</option>
+          <option value="REPLICA">REPLICA</option>
+          <option value="SECONDARY">SECONDARY</option>
+        </select>
+        <select
+          value={statusFilter}
+          onChange={(event) => {
+            setPage(0);
+            setStatusFilter(event.target.value);
+          }}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+        >
+          <option value="">All statuses</option>
+          <option value="ACTIVE">ACTIVE</option>
+          <option value="DISABLED">DISABLED</option>
+          <option value="INACTIVE">INACTIVE</option>
+        </select>
       </div>
 
       <div className="grid grid-cols-1 gap-4">
@@ -165,6 +222,27 @@ export default function DatabaseInstancesList() {
             </div>
         ))}
         {dbs.length === 0 && <div className="text-center text-light-text-secondary dark:text-dark-text-secondary py-8">No instances registered.</div>}
+      </div>
+      <div className="flex items-center justify-between text-sm">
+        <div className="text-light-text-secondary dark:text-dark-text-secondary">
+          Showing {(meta.offset ?? 0) + (dbs.length > 0 ? 1 : 0)}-{(meta.offset ?? 0) + dbs.length} of {meta.total ?? dbs.length}
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setPage((current) => Math.max(0, current - 1))}
+            disabled={!hasPrevious}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-light-text-primary transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-dark-text-primary dark:hover:bg-gray-900"
+          >
+            Previous
+          </button>
+          <button
+            onClick={() => setPage((current) => current + 1)}
+            disabled={!hasNext}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-light-text-primary transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-dark-text-primary dark:hover:bg-gray-900"
+          >
+            Next
+          </button>
+        </div>
       </div>
 
       {/* Failover Modal */}

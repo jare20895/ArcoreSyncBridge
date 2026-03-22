@@ -223,3 +223,82 @@ def test_core_reads_require_authenticated_user_in_header_mode(monkeypatch):
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Authentication email header is required"
+
+
+def test_applications_list_supports_pagination_and_filters():
+    client.post(
+        "/api/v1/applications/",
+        json={
+            "name": "Billing Hub",
+            "owner_team": "Finance",
+            "description": "Billing workflows",
+            "status": "ACTIVE",
+        },
+    )
+    client.post(
+        "/api/v1/applications/",
+        json={
+            "name": "Archive Portal",
+            "owner_team": "Ops",
+            "description": "Historical data",
+            "status": "ARCHIVED",
+        },
+    )
+
+    response = client.get("/api/v1/applications/", params={"q": "Billing", "status": "ACTIVE", "limit": 1, "offset": 0})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"]["total"] == 1
+    assert body["meta"]["limit"] == 1
+    assert body["meta"]["offset"] == 0
+    assert len(body["data"]) == 1
+    assert body["data"][0]["name"] == "Billing Hub"
+
+
+def test_databases_list_supports_pagination_and_filters():
+    app_response = client.post(
+        "/api/v1/applications/",
+        json={
+            "name": "Analytics",
+            "owner_team": "Data",
+            "status": "ACTIVE",
+        },
+    )
+    application_id = app_response.json()["data"]["id"]
+
+    client.post(
+        "/api/v1/databases/",
+        json={
+            "application_id": application_id,
+            "name": "Warehouse",
+            "db_type": "POSTGRES",
+            "environment": "PROD",
+            "database_name": "warehouse_prod",
+            "status": "ACTIVE",
+        },
+    )
+    client.post(
+        "/api/v1/databases/",
+        json={
+            "application_id": application_id,
+            "name": "Warehouse Dev",
+            "db_type": "POSTGRES",
+            "environment": "DEV",
+            "database_name": "warehouse_dev",
+            "status": "DISABLED",
+        },
+    )
+
+    response = client.get(
+        "/api/v1/databases/",
+        params={"q": "warehouse", "environment": "PROD", "status": "ACTIVE", "limit": 1, "offset": 0},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"]["total"] == 1
+    assert body["meta"]["limit"] == 1
+    assert body["meta"]["offset"] == 0
+    assert len(body["data"]) == 1
+    assert body["data"][0]["database_name"] == "warehouse_prod"

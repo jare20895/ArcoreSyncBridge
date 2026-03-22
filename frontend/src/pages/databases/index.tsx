@@ -1,30 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Edit, Trash2 } from 'lucide-react';
-import { getDatabases, deleteDatabase, getApplications } from '../../services/api';
+import { getDatabasesPage, deleteDatabase, getApplications } from '../../services/api';
 import { useToast } from '../../components/ui/ToastProvider';
 import { useConfirmDialog } from '../../components/ui/ConfirmDialogProvider';
 import { getErrorMessage } from '../../lib/errors';
+
+const PAGE_SIZE = 20;
 
 export default function DatabasesPage() {
   const { showToast } = useToast();
   const { confirm } = useConfirmDialog();
   const [databases, setDatabases] = useState<any[]>([]);
+  const [meta, setMeta] = useState<{ total?: number; offset?: number }>({});
   const [applications, setApplications] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [environmentFilter, setEnvironmentFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(0);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    setLoading(true);
     try {
-      const [dbData, appData] = await Promise.all([
-        getDatabases(),
+      const [dbResponse, appData] = await Promise.all([
+        getDatabasesPage({
+          q: search || undefined,
+          environment: environmentFilter || undefined,
+          status: statusFilter || undefined,
+          offset: page * PAGE_SIZE,
+          limit: PAGE_SIZE,
+        }),
         getApplications()
       ]);
-      setDatabases(dbData);
+      setDatabases(dbResponse.data);
+      setMeta(dbResponse.meta ?? {});
+      setError('');
 
       // Create a map of applications by ID for easy lookup
       const appMap = appData.reduce((acc: Record<string, any>, app: any) => {
@@ -38,7 +50,11 @@ export default function DatabasesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [environmentFilter, page, search, statusFilter]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
   const handleDelete = async (id: string, name: string) => {
     const confirmed = await confirm({
@@ -58,7 +74,7 @@ export default function DatabasesPage() {
         description: `${name} was removed successfully.`,
         variant: 'success'
       });
-      loadData();
+      void loadData();
     } catch (err: any) {
       showToast({
         title: 'Delete failed',
@@ -75,6 +91,9 @@ export default function DatabasesPage() {
       </div>
     );
   }
+
+  const hasPrevious = page > 0;
+  const hasNext = (meta.offset ?? 0) + databases.length < (meta.total ?? databases.length);
 
   return (
     <div className="p-8">
@@ -95,6 +114,43 @@ export default function DatabasesPage() {
       </div>
 
       {error && <div className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 p-3 rounded mb-4">{error}</div>}
+
+      <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
+        <input
+          value={search}
+          onChange={(event) => {
+            setPage(0);
+            setSearch(event.target.value);
+          }}
+          placeholder="Search name or database name"
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+        />
+        <select
+          value={environmentFilter}
+          onChange={(event) => {
+            setPage(0);
+            setEnvironmentFilter(event.target.value);
+          }}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+        >
+          <option value="">All environments</option>
+          <option value="DEV">DEV</option>
+          <option value="STAGING">STAGING</option>
+          <option value="PROD">PROD</option>
+        </select>
+        <select
+          value={statusFilter}
+          onChange={(event) => {
+            setPage(0);
+            setStatusFilter(event.target.value);
+          }}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+        >
+          <option value="">All statuses</option>
+          <option value="ACTIVE">ACTIVE</option>
+          <option value="DISABLED">DISABLED</option>
+        </select>
+      </div>
 
       <div className="bg-light-surface dark:bg-dark-surface border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -173,6 +229,28 @@ export default function DatabasesPage() {
             )}
           </tbody>
         </table>
+        <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4 text-sm dark:border-gray-700">
+          <div className="text-light-text-secondary dark:text-dark-text-secondary">
+            Showing {(meta.offset ?? 0) + (databases.length > 0 ? 1 : 0)}-{(meta.offset ?? 0) + databases.length} of{' '}
+            {meta.total ?? databases.length}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((current) => Math.max(0, current - 1))}
+              disabled={!hasPrevious}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-light-text-primary transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-dark-text-primary dark:hover:bg-gray-900"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setPage((current) => current + 1)}
+              disabled={!hasNext}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-light-text-primary transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-dark-text-primary dark:hover:bg-gray-900"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

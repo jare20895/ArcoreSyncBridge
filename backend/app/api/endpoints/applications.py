@@ -1,9 +1,9 @@
 """
 API endpoints for Application CRUD operations.
 """
-from typing import List
+from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.responses import success_response
@@ -21,11 +21,28 @@ router = APIRouter()
 def list_applications(
     request: Request,
     _: Principal = Depends(require_roles(*VIEWER_ROLES)),
+    q: Optional[str] = Query(None, description="Search by name, owner team, or description"),
+    status: Optional[str] = Query(None, description="Filter by status"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
     """List all applications."""
-    applications = db.query(Application).order_by(Application.name).all()
-    return success_response(request, applications)
+    query = db.query(Application)
+
+    if q:
+        search = f"%{q.strip()}%"
+        query = query.filter(
+            Application.name.ilike(search)
+            | Application.owner_team.ilike(search)
+            | Application.description.ilike(search)
+        )
+    if status:
+        query = query.filter(Application.status == status)
+
+    total = query.count()
+    applications = query.order_by(Application.name).offset(offset).limit(limit).all()
+    return success_response(request, applications, meta={"total": total, "limit": limit, "offset": offset})
 
 
 @router.get("/{application_id}", response_model=ApiResponse[ApplicationResponse])

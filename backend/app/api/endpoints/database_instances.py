@@ -1,6 +1,6 @@
-from typing import List
+from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select, text
 
@@ -57,13 +57,32 @@ def create_database_instance(
 def list_database_instances(
     request: Request,
     _: Principal = Depends(require_roles(*VIEWER_ROLES)),
-    skip: int = 0,
-    limit: int = 100,
+    database_id: Optional[UUID] = Query(None),
+    q: Optional[str] = Query(None, description="Search by instance label, host, or database name"),
+    role: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db)
 ):
-    stmt = select(DatabaseInstance).offset(skip).limit(limit)
-    result = db.execute(stmt)
-    return success_response(request, result.scalars().all())
+    query = db.query(DatabaseInstance)
+    if database_id:
+        query = query.filter(DatabaseInstance.database_id == database_id)
+    if q:
+        search = f"%{q.strip()}%"
+        query = query.filter(
+            DatabaseInstance.instance_label.ilike(search)
+            | DatabaseInstance.host.ilike(search)
+            | DatabaseInstance.db_name.ilike(search)
+        )
+    if role:
+        query = query.filter(DatabaseInstance.role == role)
+    if status:
+        query = query.filter(DatabaseInstance.status == status)
+
+    total = query.count()
+    instances = query.order_by(DatabaseInstance.instance_label).offset(offset).limit(limit).all()
+    return success_response(request, instances, meta={"total": total, "limit": limit, "offset": offset})
 
 @router.get("/{instance_id}", response_model=ApiResponse[DatabaseInstanceRead])
 def get_database_instance(

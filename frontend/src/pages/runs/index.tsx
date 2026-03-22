@@ -1,29 +1,34 @@
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
-import { getSyncRuns, getSyncDefinitions } from '../../services/api';
+import React, { useCallback, useEffect, useState } from 'react';
+import { getSyncRunsPage, getSyncDefinitions } from '../../services/api';
 import { Clock, CheckCircle, XCircle, AlertCircle, Play, ArrowRight, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 
+const PAGE_SIZE = 20;
+
 export default function RunsPage() {
-  const router = useRouter();
   const [runs, setRuns] = useState<any[]>([]);
+  const [meta, setMeta] = useState<{ total?: number; offset?: number }>({});
   const [syncDefs, setSyncDefs] = useState<{ [key: string]: any }>({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all'); // all, completed, failed, running
+  const [runTypeFilter, setRunTypeFilter] = useState<string>('all');
+  const [page, setPage] = useState(0);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [runsData, defsData] = await Promise.all([
-        getSyncRuns(),
+      const [runsResponse, defsData] = await Promise.all([
+        getSyncRunsPage({
+          offset: page * PAGE_SIZE,
+          limit: PAGE_SIZE,
+          status: filter === 'all' ? undefined : filter.toUpperCase(),
+          run_type: runTypeFilter === 'all' ? undefined : runTypeFilter,
+        }),
         getSyncDefinitions()
       ]);
 
-      setRuns(runsData);
+      setRuns(runsResponse.data);
+      setMeta(runsResponse.meta ?? {});
 
       // Map sync definitions by ID for quick lookup
       const defsMap: { [key: string]: any } = {};
@@ -36,7 +41,11 @@ export default function RunsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter, page, runTypeFilter]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -100,10 +109,8 @@ export default function RunsPage() {
     }).format(date);
   };
 
-  const filteredRuns = runs.filter(run => {
-    if (filter === 'all') return true;
-    return run.status.toLowerCase() === filter;
-  });
+  const hasPrevious = page > 0;
+  const hasNext = (meta.offset ?? 0) + runs.length < (meta.total ?? runs.length);
 
   return (
     <div className="min-h-screen bg-light-background dark:bg-dark-background">
@@ -118,7 +125,7 @@ export default function RunsPage() {
             </p>
           </div>
           <button
-            onClick={loadData}
+            onClick={() => void loadData()}
             className="flex items-center space-x-2 px-4 py-2 bg-light-primary dark:bg-dark-primary text-white rounded shadow-sm hover:bg-opacity-90"
           >
             <RefreshCw size={16} />
@@ -127,20 +134,38 @@ export default function RunsPage() {
         </div>
 
         {/* Filter Tabs */}
-        <div className="flex space-x-4 mt-4">
-          {['all', 'completed', 'failed', 'running'].map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-4 py-2 text-sm font-medium rounded transition ${
-                filter === f
-                  ? 'bg-light-primary dark:bg-dark-primary text-white'
-                  : 'text-light-text-secondary dark:text-dark-text-secondary hover:bg-gray-100 dark:hover:bg-gray-800'
-              }`}
-            >
-              {f.charAt(0).toUpperCase() + f.slice(1)} ({runs.filter(r => f === 'all' || r.status.toLowerCase() === f).length})
-            </button>
-          ))}
+        <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap gap-4">
+            {['all', 'completed', 'failed', 'running'].map((f) => (
+              <button
+                key={f}
+                onClick={() => {
+                  setPage(0);
+                  setFilter(f);
+                }}
+                className={`px-4 py-2 text-sm font-medium rounded transition ${
+                  filter === f
+                    ? 'bg-light-primary dark:bg-dark-primary text-white'
+                    : 'text-light-text-secondary dark:text-dark-text-secondary hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+              >
+                {f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
+          </div>
+          <select
+            value={runTypeFilter}
+            onChange={(event) => {
+              setPage(0);
+              setRunTypeFilter(event.target.value);
+            }}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+          >
+            <option value="all">All run types</option>
+            <option value="PUSH">PUSH</option>
+            <option value="INGRESS">INGRESS</option>
+            <option value="CDC">CDC</option>
+          </select>
         </div>
       </header>
 
@@ -150,7 +175,7 @@ export default function RunsPage() {
             <RefreshCw size={32} className="animate-spin mx-auto text-light-primary dark:text-dark-primary" />
             <p className="mt-4 text-light-text-secondary dark:text-dark-text-secondary">Loading run history...</p>
           </div>
-        ) : filteredRuns.length === 0 ? (
+        ) : runs.length === 0 ? (
           <div className="bg-white dark:bg-dark-surface rounded border border-gray-200 dark:border-gray-700 p-12 text-center">
             <Clock size={48} className="mx-auto text-gray-400 mb-4" />
             <h3 className="text-lg font-medium text-light-text-primary dark:text-dark-text-primary mb-2">
@@ -189,7 +214,7 @@ export default function RunsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {filteredRuns.map((run) => {
+                {runs.map((run) => {
                   const syncDef = syncDefs[run.sync_def_id];
                   return (
                     <tr key={run.id} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition">
@@ -271,6 +296,27 @@ export default function RunsPage() {
                 })}
               </tbody>
             </table>
+            <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4 text-sm dark:border-gray-700">
+              <div className="text-light-text-secondary dark:text-dark-text-secondary">
+                Showing {(meta.offset ?? 0) + (runs.length > 0 ? 1 : 0)}-{(meta.offset ?? 0) + runs.length} of {meta.total ?? runs.length}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPage((current) => Math.max(0, current - 1))}
+                  disabled={!hasPrevious}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-light-text-primary transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-dark-text-primary dark:hover:bg-gray-900"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setPage((current) => current + 1)}
+                  disabled={!hasNext}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-light-text-primary transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-dark-text-primary dark:hover:bg-gray-900"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </main>
