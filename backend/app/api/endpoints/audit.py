@@ -22,6 +22,7 @@ def list_audit_logs(
     action: Optional[str] = Query(None),
     resource_type: Optional[str] = Query(None),
     resource_id: Optional[str] = Query(None),
+    offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
@@ -36,5 +37,6 @@ def list_audit_logs(
     if resource_id:
         query = query.filter(AuditLog.resource_id == resource_id)
 
-    rows = query.order_by(AuditLog.created_at.desc()).limit(limit).all()
-    return success_response(request, rows)
+    total = query.count()
+    rows = query.order_by(AuditLog.created_at.desc()).offset(offset).limit(limit).all()
+    return success_response(request, rows, meta={"total": total, "limit": limit, "offset": offset})

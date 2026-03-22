@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Activity, ArrowRight, RefreshCw, ShieldCheck, Users } from 'lucide-react';
 
@@ -34,6 +34,12 @@ type ManagedUser = {
   last_login_at?: string | null;
 };
 
+type ListMeta = {
+  total?: number;
+  limit?: number;
+  offset?: number;
+};
+
 const ROLE_OPTIONS = ['viewer', 'operator', 'editor', 'admin', 'platform_admin'];
 const STATUS_OPTIONS = ['ACTIVE', 'DISABLED'];
 
@@ -55,7 +61,13 @@ const QUICK_LINKS = [
 export default function GovernancePage() {
   const [principal, setPrincipal] = useState<Principal | null>(null);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
+  const [auditMeta, setAuditMeta] = useState<ListMeta>({});
+  const [auditFilters, setAuditFilters] = useState({ action: '', actorEmail: '' });
+  const [auditPage, setAuditPage] = useState(0);
   const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [userMeta, setUserMeta] = useState<ListMeta>({});
+  const [userFilters, setUserFilters] = useState({ email: '', role: '', status: '' });
+  const [userPage, setUserPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<Record<string, { role: string; status: string }>>({});
@@ -75,20 +87,27 @@ export default function GovernancePage() {
       setPrincipal(currentUser);
 
       if (currentUser.role === 'admin' || currentUser.role === 'platform_admin') {
-        const [auditRows, managedUsers] = await Promise.all([
-          getAuditLog({ limit: 20 }),
-          getManagedUsers(),
+        const [auditResponse, managedUsersResponse] = await Promise.all([
+          getAuditLog({ limit: 20, offset: 0 }),
+          getManagedUsers({ limit: 20, offset: 0 }),
         ]);
-        setAuditEntries(auditRows);
-        setUsers(managedUsers);
+        setAuditEntries(auditResponse.data);
+        setAuditMeta(auditResponse.meta ?? {});
+        setUsers(managedUsersResponse.data);
+        setUserMeta(managedUsersResponse.meta ?? {});
         setSaveState(
           Object.fromEntries(
-            managedUsers.map((user: ManagedUser) => [user.id, { role: user.role, status: user.status }])
+            managedUsersResponse.data.map((user: ManagedUser) => [
+              user.id,
+              { role: user.role, status: user.status },
+            ])
           )
         );
       } else {
         setAuditEntries([]);
+        setAuditMeta({});
         setUsers([]);
+        setUserMeta({});
         setSaveState({});
       }
     } catch (err: any) {
@@ -97,6 +116,35 @@ export default function GovernancePage() {
       setLoading(false);
     }
   };
+
+  const loadAuditEntries = useCallback(async (page = auditPage, filters = auditFilters) => {
+    const response = await getAuditLog({
+      limit: 20,
+      offset: page * 20,
+      action: filters.action || undefined,
+      actor_email: filters.actorEmail || undefined,
+    });
+    setAuditEntries(response.data);
+    setAuditMeta(response.meta ?? {});
+  }, [auditFilters, auditPage]);
+
+  const loadManagedUsers = useCallback(async (page = userPage, filters = userFilters) => {
+    const response = await getManagedUsers({
+      limit: 20,
+      offset: page * 20,
+      email: filters.email || undefined,
+      role: filters.role || undefined,
+      status: filters.status || undefined,
+    });
+    setUsers(response.data);
+    setUserMeta(response.meta ?? {});
+    setSaveState((current) => ({
+      ...current,
+      ...Object.fromEntries(
+        response.data.map((user: ManagedUser) => [user.id, { role: user.role, status: user.status }])
+      ),
+    }));
+  }, [userFilters, userPage]);
 
   const formatDateTime = (value?: string | null) => {
     if (!value) return 'Never';
@@ -109,6 +157,20 @@ export default function GovernancePage() {
   };
 
   const isAdmin = principal?.role === 'admin' || principal?.role === 'platform_admin';
+
+  useEffect(() => {
+    if (!isAdmin || loading) {
+      return;
+    }
+    void loadAuditEntries();
+  }, [auditPage, auditFilters, isAdmin, loadAuditEntries, loading]);
+
+  useEffect(() => {
+    if (!isAdmin || loading) {
+      return;
+    }
+    void loadManagedUsers();
+  }, [userPage, userFilters, isAdmin, loadManagedUsers, loading]);
 
   const updateDraft = (userId: string, patch: Partial<{ role: string; status: string }>) => {
     setSaveState((current) => ({
@@ -139,14 +201,19 @@ export default function GovernancePage() {
         )
       );
       setSaveMessage(`Updated access for ${user.email}.`);
-      const auditRows = await getAuditLog({ limit: 20 });
-      setAuditEntries(auditRows);
+      await Promise.all([loadAuditEntries(0, auditFilters), loadManagedUsers(userPage, userFilters)]);
+      setAuditPage(0);
     } catch (err: any) {
       setSaveMessage(err?.response?.data?.error?.message || `Failed to update ${user.email}.`);
     } finally {
       setSavingUserId(null);
     }
   };
+
+  const auditHasPrevious = auditPage > 0;
+  const auditHasNext = (auditMeta.offset ?? 0) + auditEntries.length < (auditMeta.total ?? 0);
+  const userHasPrevious = userPage > 0;
+  const userHasNext = (userMeta.offset ?? 0) + users.length < (userMeta.total ?? 0);
 
   return (
     <div className="space-y-6">
@@ -257,41 +324,107 @@ export default function GovernancePage() {
               Audit log visibility is currently limited to `admin` and `platform_admin` roles.
             </div>
           ) : auditEntries.length === 0 ? (
-            <div className="p-5 text-sm text-light-text-secondary dark:text-dark-text-secondary">No audit events recorded yet.</div>
+            <>
+              <div className="grid gap-3 border-b border-gray-200 px-5 py-4 dark:border-gray-800 md:grid-cols-2">
+                <input
+                  value={auditFilters.actorEmail}
+                  onChange={(event) => {
+                    setAuditPage(0);
+                    setAuditFilters((current) => ({ ...current, actorEmail: event.target.value }));
+                  }}
+                  placeholder="Filter by actor email"
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+                />
+                <input
+                  value={auditFilters.action}
+                  onChange={(event) => {
+                    setAuditPage(0);
+                    setAuditFilters((current) => ({ ...current, action: event.target.value }));
+                  }}
+                  placeholder="Filter by action"
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+                />
+              </div>
+              <div className="p-5 text-sm text-light-text-secondary dark:text-dark-text-secondary">No audit events recorded yet.</div>
+            </>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px]">
-                <thead className="bg-gray-50 dark:bg-gray-900">
-                  <tr>
-                    <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">When</th>
-                    <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Actor</th>
-                    <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Action</th>
-                    <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Resource</th>
-                    <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Request</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                  {auditEntries.map((entry) => (
-                    <tr key={entry.id} className="align-top">
-                      <td className="px-5 py-4 text-sm text-light-text-primary dark:text-dark-text-primary">{formatDateTime(entry.created_at)}</td>
-                      <td className="px-5 py-4">
-                        <div className="text-sm font-medium text-light-text-primary dark:text-dark-text-primary">{entry.actor_email}</div>
-                        <div className="mt-1 text-xs uppercase tracking-wide text-light-text-secondary dark:text-dark-text-secondary">{entry.actor_role}</div>
-                      </td>
-                      <td className="px-5 py-4 text-sm text-light-text-primary dark:text-dark-text-primary">{entry.action}</td>
-                      <td className="px-5 py-4">
-                        <div className="text-sm text-light-text-primary dark:text-dark-text-primary">{entry.resource_type}</div>
-                        <div className="mt-1 font-mono text-xs text-light-text-secondary dark:text-dark-text-secondary">{entry.resource_id || 'n/a'}</div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="text-xs uppercase tracking-wide text-light-text-secondary dark:text-dark-text-secondary">{entry.method || 'n/a'}</div>
-                        <div className="mt-1 font-mono text-xs text-light-text-secondary dark:text-dark-text-secondary">{entry.request_id || 'n/a'}</div>
-                      </td>
+            <>
+              <div className="grid gap-3 border-b border-gray-200 px-5 py-4 dark:border-gray-800 md:grid-cols-2">
+                <input
+                  value={auditFilters.actorEmail}
+                  onChange={(event) => {
+                    setAuditPage(0);
+                    setAuditFilters((current) => ({ ...current, actorEmail: event.target.value }));
+                  }}
+                  placeholder="Filter by actor email"
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+                />
+                <input
+                  value={auditFilters.action}
+                  onChange={(event) => {
+                    setAuditPage(0);
+                    setAuditFilters((current) => ({ ...current, action: event.target.value }));
+                  }}
+                  placeholder="Filter by action"
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+                />
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px]">
+                  <thead className="bg-gray-50 dark:bg-gray-900">
+                    <tr>
+                      <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">When</th>
+                      <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Actor</th>
+                      <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Action</th>
+                      <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Resource</th>
+                      <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Request</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                    {auditEntries.map((entry) => (
+                      <tr key={entry.id} className="align-top">
+                        <td className="px-5 py-4 text-sm text-light-text-primary dark:text-dark-text-primary">{formatDateTime(entry.created_at)}</td>
+                        <td className="px-5 py-4">
+                          <div className="text-sm font-medium text-light-text-primary dark:text-dark-text-primary">{entry.actor_email}</div>
+                          <div className="mt-1 text-xs uppercase tracking-wide text-light-text-secondary dark:text-dark-text-secondary">{entry.actor_role}</div>
+                        </td>
+                        <td className="px-5 py-4 text-sm text-light-text-primary dark:text-dark-text-primary">{entry.action}</td>
+                        <td className="px-5 py-4">
+                          <div className="text-sm text-light-text-primary dark:text-dark-text-primary">{entry.resource_type}</div>
+                          <div className="mt-1 font-mono text-xs text-light-text-secondary dark:text-dark-text-secondary">{entry.resource_id || 'n/a'}</div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="text-xs uppercase tracking-wide text-light-text-secondary dark:text-dark-text-secondary">{entry.method || 'n/a'}</div>
+                          <div className="mt-1 font-mono text-xs text-light-text-secondary dark:text-dark-text-secondary">{entry.request_id || 'n/a'}</div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center justify-between border-t border-gray-200 px-5 py-4 text-sm dark:border-gray-800">
+                <div className="text-light-text-secondary dark:text-dark-text-secondary">
+                  Showing {(auditMeta.offset ?? 0) + (auditEntries.length > 0 ? 1 : 0)}-
+                  {(auditMeta.offset ?? 0) + auditEntries.length} of {auditMeta.total ?? auditEntries.length}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setAuditPage((current) => Math.max(0, current - 1))}
+                    disabled={!auditHasPrevious}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-light-text-primary transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-dark-text-primary dark:hover:bg-gray-900"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    onClick={() => setAuditPage((current) => current + 1)}
+                    disabled={!auditHasNext}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-light-text-primary transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-dark-text-primary dark:hover:bg-gray-900"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </section>
 
@@ -311,9 +444,97 @@ export default function GovernancePage() {
               User-management visibility is limited to administrative roles.
             </div>
           ) : users.length === 0 ? (
-            <div className="p-5 text-sm text-light-text-secondary dark:text-dark-text-secondary">No managed users found.</div>
+            <>
+              <div className="grid gap-3 border-b border-gray-200 px-5 py-4 dark:border-gray-800">
+                <input
+                  value={userFilters.email}
+                  onChange={(event) => {
+                    setUserPage(0);
+                    setUserFilters((current) => ({ ...current, email: event.target.value }));
+                  }}
+                  placeholder="Filter by email"
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <select
+                    value={userFilters.role}
+                    onChange={(event) => {
+                      setUserPage(0);
+                      setUserFilters((current) => ({ ...current, role: event.target.value }));
+                    }}
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+                  >
+                    <option value="">All roles</option>
+                    {ROLE_OPTIONS.map((role) => (
+                      <option key={role} value={role}>
+                        {role}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={userFilters.status}
+                    onChange={(event) => {
+                      setUserPage(0);
+                      setUserFilters((current) => ({ ...current, status: event.target.value }));
+                    }}
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+                  >
+                    <option value="">All statuses</option>
+                    {STATUS_OPTIONS.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="p-5 text-sm text-light-text-secondary dark:text-dark-text-secondary">No managed users found.</div>
+            </>
           ) : (
             <div className="divide-y divide-gray-200 dark:divide-gray-800">
+              <div className="grid gap-3 px-5 py-4">
+                <input
+                  value={userFilters.email}
+                  onChange={(event) => {
+                    setUserPage(0);
+                    setUserFilters((current) => ({ ...current, email: event.target.value }));
+                  }}
+                  placeholder="Filter by email"
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <select
+                    value={userFilters.role}
+                    onChange={(event) => {
+                      setUserPage(0);
+                      setUserFilters((current) => ({ ...current, role: event.target.value }));
+                    }}
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+                  >
+                    <option value="">All roles</option>
+                    {ROLE_OPTIONS.map((role) => (
+                      <option key={role} value={role}>
+                        {role}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={userFilters.status}
+                    onChange={(event) => {
+                      setUserPage(0);
+                      setUserFilters((current) => ({ ...current, status: event.target.value }));
+                    }}
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+                  >
+                    <option value="">All statuses</option>
+                    {STATUS_OPTIONS.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               {saveMessage ? (
                 <div className="border-b border-gray-200 bg-gray-50 px-5 py-3 text-sm text-light-text-secondary dark:border-gray-800 dark:bg-gray-900 dark:text-dark-text-secondary">
                   {saveMessage}
@@ -383,6 +604,28 @@ export default function GovernancePage() {
                   </div>
                 </div>
               ))}
+              <div className="flex items-center justify-between px-5 py-4 text-sm">
+                <div className="text-light-text-secondary dark:text-dark-text-secondary">
+                  Showing {(userMeta.offset ?? 0) + (users.length > 0 ? 1 : 0)}-{(userMeta.offset ?? 0) + users.length} of{' '}
+                  {userMeta.total ?? users.length}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setUserPage((current) => Math.max(0, current - 1))}
+                    disabled={!userHasPrevious}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-light-text-primary transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-dark-text-primary dark:hover:bg-gray-900"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    onClick={() => setUserPage((current) => current + 1)}
+                    disabled={!userHasNext}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-light-text-primary transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-dark-text-primary dark:hover:bg-gray-900"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </section>

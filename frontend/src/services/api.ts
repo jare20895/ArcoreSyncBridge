@@ -6,11 +6,33 @@ const api = axios.create({
   baseURL: `${API_URL}/api/v1`,
 });
 
+type ApiMeta = {
+  request_id?: string;
+  total?: number;
+  limit?: number;
+  offset?: number;
+};
+
+type ApiEnvelope<T> = {
+  data: T;
+  meta: ApiMeta;
+};
+
 const unwrapData = <T>(payload: any): T => {
   if (payload && typeof payload === 'object' && 'data' in payload && 'meta' in payload) {
     return payload.data as T;
   }
   return payload as T;
+};
+
+const unwrapEnvelope = <T>(payload: any): ApiEnvelope<T> => {
+  if (payload && typeof payload === 'object' && 'data' in payload && 'meta' in payload) {
+    return payload as ApiEnvelope<T>;
+  }
+  return {
+    data: payload as T,
+    meta: {},
+  };
 };
 
 api.interceptors.response.use((response) => {
@@ -414,15 +436,22 @@ export const getAuditLog = async (params?: {
   action?: string;
   resource_type?: string;
   resource_id?: string;
+  offset?: number;
   limit?: number;
 }) => {
   const res = await api.get('/audit/', { params });
-  return unwrapData<any[]>(res.data);
+  return unwrapEnvelope<any[]>(res.data);
 };
 
-export const getManagedUsers = async () => {
-  const res = await api.get('/auth/users');
-  return unwrapData<any[]>(res.data);
+export const getManagedUsers = async (params?: {
+  email?: string;
+  role?: string;
+  status?: string;
+  offset?: number;
+  limit?: number;
+}) => {
+  const res = await api.get('/auth/users', { params });
+  return unwrapEnvelope<any[]>(res.data);
 };
 
 export const updateManagedUser = async (userId: string, data: { email?: string; display_name?: string; role?: string; status?: string }) => {

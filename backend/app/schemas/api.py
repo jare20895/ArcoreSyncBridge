@@ -8,6 +8,9 @@ T = TypeVar("T")
 
 class ApiMeta(BaseModel):
     request_id: Optional[str] = None
+    total: Optional[int] = None
+    limit: Optional[int] = None
+    offset: Optional[int] = None
 
 
 class ApiResponse(BaseModel, Generic[T]):

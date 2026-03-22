@@ -1,7 +1,7 @@
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.responses import success_response
@@ -33,10 +33,24 @@ def admin_check(
 def list_users(
     request: Request,
     _: Principal = Depends(require_roles(*ADMIN_ROLES)),
+    email: Optional[str] = Query(None),
+    role: Optional[str] = Query(None),
+    status_filter: Optional[str] = Query(None, alias="status"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
-    users = db.query(AppUser).order_by(AppUser.email).all()
-    return success_response(request, users)
+    query = db.query(AppUser)
+    if email:
+        query = query.filter(AppUser.email.ilike(f"%{email.lower()}%"))
+    if role:
+        query = query.filter(AppUser.role == role)
+    if status_filter:
+        query = query.filter(AppUser.status == status_filter)
+
+    total = query.count()
+    users = query.order_by(AppUser.email).offset(offset).limit(limit).all()
+    return success_response(request, users, meta={"total": total, "limit": limit, "offset": offset})
 
 
 @router.post("/users", response_model=ApiResponse[AppUserRead], status_code=status.HTTP_201_CREATED)
