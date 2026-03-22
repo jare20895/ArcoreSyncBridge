@@ -1,12 +1,12 @@
-from typing import List
+from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.api.responses import success_response
-from app.api.endpoints.database_instances import get_db
 from app.core.security import EDITOR_ROLES, VIEWER_ROLES, Principal, require_roles
+from app.db.session import get_db
 from app.models.core import SyncDefinition, SyncSource, SyncTarget, SyncKeyColumn, FieldMapping
 from app.models.inventory import DatabaseTable, TableColumn, SharePointList, SharePointColumn
 from app.schemas.api import ApiResponse, MessageResponse
@@ -118,12 +118,23 @@ def create_sync_definition(
 def list_sync_definitions(
     request: Request,
     _: Principal = Depends(require_roles(*VIEWER_ROLES)),
-    skip: int = 0,
-    limit: int = 100,
+    q: Optional[str] = Query(None, description="Search by sync definition name"),
+    sync_mode: Optional[str] = Query(None),
+    is_paused: Optional[bool] = Query(None),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db)
 ):
-    stmt = select(SyncDefinition).offset(skip).limit(limit)
-    results = db.execute(stmt).scalars().all()
+    query = db.query(SyncDefinition)
+    if q:
+        query = query.filter(SyncDefinition.name.ilike(f"%{q.strip()}%"))
+    if sync_mode:
+        query = query.filter(SyncDefinition.sync_mode == sync_mode)
+    if is_paused is not None:
+        query = query.filter(SyncDefinition.is_paused == is_paused)
+
+    total = query.count()
+    results = query.order_by(SyncDefinition.name).offset(offset).limit(limit).all()
     
     # Enrich with names
     enriched = []
@@ -149,7 +160,7 @@ def list_sync_definitions(
             
         enriched.append(model)
         
-    return success_response(request, enriched)
+    return success_response(request, enriched, meta={"total": total, "limit": limit, "offset": offset})
 
 @router.get("/{def_id}", response_model=ApiResponse[SyncDefinitionRead])
 def get_sync_definition(

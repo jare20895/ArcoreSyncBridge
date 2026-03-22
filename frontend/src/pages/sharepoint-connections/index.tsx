@@ -1,29 +1,48 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Cloud, Plus } from 'lucide-react';
-import { getConnections } from '../../services/api';
+import { getConnectionsPage } from '../../services/api';
+import { FilterToolbar } from '../../components/ui/FilterToolbar';
+import { ListPagination } from '../../components/ui/ListPagination';
 import { getErrorMessage } from '../../lib/errors';
+
+const PAGE_SIZE = 20;
 
 export default function SharePointConnectionsPage() {
   const [connections, setConnections] = useState<any[]>([]);
+  const [meta, setMeta] = useState<{ total?: number; offset?: number }>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(0);
+
+  const loadConnections = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await getConnectionsPage({
+        q: search || undefined,
+        status: statusFilter || undefined,
+        offset: page * PAGE_SIZE,
+        limit: PAGE_SIZE,
+      });
+      setConnections(response.data);
+      setMeta(response.meta ?? {});
+      setError('');
+    } catch (err) {
+      console.error(err);
+      setError(getErrorMessage(err, 'Failed to load SharePoint connections'));
+    } finally {
+      setLoading(false);
+    }
+  }, [page, search, statusFilter]);
 
   useEffect(() => {
-    async function loadConnections() {
-      try {
-        const data = await getConnections();
-        setConnections(data);
-      } catch (err) {
-        console.error(err);
-        setError(getErrorMessage(err, 'Failed to load SharePoint connections'));
-      } finally {
-        setLoading(false);
-      }
-    }
+    void loadConnections();
+  }, [loadConnections]);
 
-    loadConnections();
-  }, []);
+  const hasPrevious = page > 0;
+  const hasNext = (meta.offset ?? 0) + connections.length < (meta.total ?? connections.length);
 
   if (loading) {
     return <div className="p-8 text-light-text-primary dark:text-dark-text-primary">Loading SharePoint connections...</div>;
@@ -54,6 +73,30 @@ export default function SharePointConnectionsPage() {
           {error}
         </div>
       ) : null}
+
+      <FilterToolbar className="md:grid-cols-[minmax(0,1fr)_220px]">
+        <input
+          value={search}
+          onChange={(event) => {
+            setPage(0);
+            setSearch(event.target.value);
+          }}
+          placeholder="Search tenant, hostname, or client ID"
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+        />
+        <select
+          value={statusFilter}
+          onChange={(event) => {
+            setPage(0);
+            setStatusFilter(event.target.value);
+          }}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+        >
+          <option value="">All statuses</option>
+          <option value="ACTIVE">ACTIVE</option>
+          <option value="DISABLED">DISABLED</option>
+        </select>
+      </FilterToolbar>
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-dark-surface">
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
@@ -104,6 +147,16 @@ export default function SharePointConnectionsPage() {
             )}
           </tbody>
         </table>
+        <ListPagination
+          offset={meta.offset}
+          total={meta.total}
+          count={connections.length}
+          hasPrevious={hasPrevious}
+          hasNext={hasNext}
+          onPrevious={() => setPage((current) => Math.max(0, current - 1))}
+          onNext={() => setPage((current) => current + 1)}
+          className="border-t border-gray-200 dark:border-gray-800"
+        />
       </div>
     </div>
   );

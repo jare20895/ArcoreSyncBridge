@@ -111,13 +111,28 @@ def get_lists_by_source(
 def list_sites(
     request: Request,
     connection_id: Optional[UUID] = Query(None, description="SharePoint connection ID"),
+    q: Optional[str] = Query(None, description="Search by hostname or site path"),
+    status: Optional[str] = Query(None),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     db: Session = Depends(get_db),
 ):
     query = db.query(SharePointSite)
     if connection_id:
         query = query.filter(SharePointSite.connection_id == connection_id)
-    return success_response(request, query.order_by(SharePointSite.hostname, SharePointSite.site_path).all())
+    if q:
+        search = f"%{q.strip()}%"
+        query = query.filter(
+            SharePointSite.hostname.ilike(search)
+            | SharePointSite.site_path.ilike(search)
+        )
+    if status:
+        query = query.filter(SharePointSite.status == status)
+
+    total = query.count()
+    rows = query.order_by(SharePointSite.hostname, SharePointSite.site_path).offset(offset).limit(limit).all()
+    return success_response(request, rows, meta={"total": total, "limit": limit, "offset": offset})
 
 
 @router.post("/sites/resolve", response_model=ApiResponse[SharePointSiteRead])
@@ -214,13 +229,63 @@ def extract_sites(
 def list_site_lists(
     site_id: UUID,
     request: Request,
+    q: Optional[str] = Query(None, description="Search by list display name or template"),
+    is_provisioned: Optional[bool] = Query(None),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     db: Session = Depends(get_db),
 ):
     site = db.get(SharePointSite, site_id)
     if not site:
         raise HTTPException(status_code=404, detail="SharePoint site not found")
-    return success_response(request, _serialize_lists(db, site_id))
+
+    query = db.query(SharePointList).filter(
+        SharePointList.site_id == site_id,
+        SharePointList.status == "ACTIVE",
+    )
+    if q:
+        search = f"%{q.strip()}%"
+        query = query.filter(
+            SharePointList.display_name.ilike(search)
+            | SharePointList.template.ilike(search)
+        )
+    if is_provisioned is not None:
+        query = query.filter(SharePointList.is_provisioned == is_provisioned)
+
+    total = query.count()
+    rows = (
+        query.order_by(SharePointList.display_name)
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    list_ids = [row.id for row in rows]
+    column_counts = {}
+    if list_ids:
+        counts = (
+            db.query(SharePointColumn.list_id, func.count(SharePointColumn.id))
+            .filter(SharePointColumn.list_id.in_(list_ids))
+            .group_by(SharePointColumn.list_id)
+            .all()
+        )
+        column_counts = {list_id: int(count or 0) for list_id, count in counts}
+
+    results = [
+        SharePointListRead(
+            id=sp_list.id,
+            site_id=sp_list.site_id,
+            list_id=sp_list.list_id,
+            display_name=sp_list.display_name,
+            description=sp_list.description,
+            template=sp_list.template,
+            is_provisioned=sp_list.is_provisioned,
+            last_provisioned_at=sp_list.last_provisioned_at,
+            columns_count=column_counts.get(sp_list.id, 0),
+        )
+        for sp_list in rows
+    ]
+    return success_response(request, results, meta={"total": total, "limit": limit, "offset": offset})
 
 
 @router.post("/sites/{site_id}/lists/extract", response_model=ApiResponse[List[SharePointListRead]])
@@ -263,6 +328,10 @@ def extract_site_lists(
 def list_list_columns(
     list_id: UUID,
     request: Request,
+    q: Optional[str] = Query(None, description="Search by column name or type"),
+    is_readonly: Optional[bool] = Query(None),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     db: Session = Depends(get_db),
 ):
@@ -270,13 +339,23 @@ def list_list_columns(
     if not sp_list:
         raise HTTPException(status_code=404, detail="SharePoint list not found")
 
-    columns = (
-        db.query(SharePointColumn)
-        .filter(SharePointColumn.list_id == sp_list.id)
-        .order_by(SharePointColumn.column_name)
-        .all()
+    query = db.query(SharePointColumn).filter(SharePointColumn.list_id == sp_list.id)
+    if q:
+        search = f"%{q.strip()}%"
+        query = query.filter(
+            SharePointColumn.column_name.ilike(search)
+            | SharePointColumn.column_type.ilike(search)
+        )
+    if is_readonly is not None:
+        query = query.filter(SharePointColumn.is_readonly == is_readonly)
+
+    total = query.count()
+    columns = query.order_by(SharePointColumn.column_name).offset(offset).limit(limit).all()
+    return success_response(
+        request,
+        [SharePointColumnRead.model_validate(col) for col in columns],
+        meta={"total": total, "limit": limit, "offset": offset},
     )
-    return success_response(request, [SharePointColumnRead.model_validate(col) for col in columns])
 
 
 def _resolve_column_type(item: dict) -> str:

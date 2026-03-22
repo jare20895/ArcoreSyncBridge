@@ -1,14 +1,18 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   getConnections,
-  getSharePointSites,
+  getSharePointSitesPage,
   resolveSharePointSite,
   extractSharePointSites,
-  getSharePointLists,
+  getSharePointListsPage,
   extractSharePointLists,
-  getSharePointColumns,
+  getSharePointColumnsPage,
   extractSharePointColumns
 } from '../../services/api';
+import { FilterToolbar } from '../../components/ui/FilterToolbar';
+import { ListPagination } from '../../components/ui/ListPagination';
+
+const PAGE_SIZE = 20;
 
 export default function DataTargetsPage() {
   const [connections, setConnections] = useState<any[]>([]);
@@ -19,6 +23,17 @@ export default function DataTargetsPage() {
   const [selectedConnectionId, setSelectedConnectionId] = useState('');
   const [selectedSiteId, setSelectedSiteId] = useState('');
   const [selectedListId, setSelectedListId] = useState('');
+  const [sitesMeta, setSitesMeta] = useState<{ total?: number; offset?: number }>({});
+  const [listsMeta, setListsMeta] = useState<{ total?: number; offset?: number }>({});
+  const [columnsMeta, setColumnsMeta] = useState<{ total?: number; offset?: number }>({});
+  const [siteSearch, setSiteSearch] = useState('');
+  const [sitePage, setSitePage] = useState(0);
+  const [listSearch, setListSearch] = useState('');
+  const [listProvisionedFilter, setListProvisionedFilter] = useState('');
+  const [listPage, setListPage] = useState(0);
+  const [columnSearch, setColumnSearch] = useState('');
+  const [columnReadonlyFilter, setColumnReadonlyFilter] = useState('');
+  const [columnPage, setColumnPage] = useState(0);
 
   // Manual fallback state
   const [showManualResolve, setShowManualResolve] = useState(false);
@@ -35,19 +50,58 @@ export default function DataTargetsPage() {
       .catch(() => setError('Failed to load SharePoint connections'));
   }, []);
 
-  const loadSites = useCallback((connId: string) => {
-    getSharePointSites(connId)
-      .then(setSites)
+  const loadSites = useCallback((connId: string, page = sitePage, search = siteSearch) => {
+    getSharePointSitesPage({
+      connection_id: connId,
+      q: search || undefined,
+      offset: page * PAGE_SIZE,
+      limit: PAGE_SIZE,
+    })
+      .then((response) => {
+        setSites(response.data);
+        setSitesMeta(response.meta ?? {});
+      })
       .catch(() => setError('Failed to load SharePoint sites'));
-  }, []);
+  }, [sitePage, siteSearch]);
+
+  const loadLists = useCallback((siteId: string, page = listPage, search = listSearch, provisioned = listProvisionedFilter) => {
+    getSharePointListsPage(siteId, {
+      q: search || undefined,
+      is_provisioned: provisioned === '' ? undefined : provisioned === 'true',
+      offset: page * PAGE_SIZE,
+      limit: PAGE_SIZE,
+    })
+      .then((response) => {
+        setLists(response.data);
+        setListsMeta(response.meta ?? {});
+      })
+      .catch(() => setError('Failed to load SharePoint lists'));
+  }, [listPage, listProvisionedFilter, listSearch]);
+
+  const loadColumns = useCallback((listId: string, page = columnPage, search = columnSearch, readonlyFilter = columnReadonlyFilter) => {
+    getSharePointColumnsPage(listId, {
+      q: search || undefined,
+      is_readonly: readonlyFilter === '' ? undefined : readonlyFilter === 'true',
+      offset: page * PAGE_SIZE,
+      limit: PAGE_SIZE,
+    })
+      .then((response) => {
+        setColumns(response.data);
+        setColumnsMeta(response.meta ?? {});
+      })
+      .catch(() => setError('Failed to load SharePoint columns'));
+  }, [columnPage, columnReadonlyFilter, columnSearch]);
 
   useEffect(() => {
     if (!selectedConnectionId) {
       setSites([]);
+      setSitesMeta({});
       setSelectedSiteId('');
       setSelectedListId('');
       setLists([]);
+      setListsMeta({});
       setColumns([]);
+      setColumnsMeta({});
       return;
     }
     const conn = connections.find(c => c.id === selectedConnectionId);
@@ -55,36 +109,61 @@ export default function DataTargetsPage() {
         setSiteForm(prev => ({ ...prev, hostname: conn.hostname }));
     }
 
+    setSitePage(0);
+    setSiteSearch('');
     setSelectedSiteId('');
     setSelectedListId('');
     setLists([]);
+    setListsMeta({});
     setColumns([]);
-    loadSites(selectedConnectionId);
+    setColumnsMeta({});
+    loadSites(selectedConnectionId, 0, '');
   }, [connections, loadSites, selectedConnectionId]);
+
+  useEffect(() => {
+    if (!selectedConnectionId) return;
+    loadSites(selectedConnectionId);
+  }, [loadSites, selectedConnectionId, sitePage, siteSearch]);
 
   useEffect(() => {
     if (!selectedSiteId) {
       setLists([]);
+      setListsMeta({});
       setSelectedListId('');
       setColumns([]);
+      setColumnsMeta({});
       return;
     }
+    setListPage(0);
+    setListSearch('');
+    setListProvisionedFilter('');
     setSelectedListId('');
     setColumns([]);
-    getSharePointLists(selectedSiteId)
-      .then(setLists)
-      .catch(() => setError('Failed to load SharePoint lists'));
-  }, [selectedSiteId]);
+    setColumnsMeta({});
+    loadLists(selectedSiteId, 0, '', '');
+  }, [loadLists, selectedSiteId]);
+
+  useEffect(() => {
+    if (!selectedSiteId) return;
+    loadLists(selectedSiteId);
+  }, [listPage, listProvisionedFilter, listSearch, loadLists, selectedSiteId]);
 
   useEffect(() => {
     if (!selectedListId) {
       setColumns([]);
+      setColumnsMeta({});
       return;
     }
-    getSharePointColumns(selectedListId)
-      .then(setColumns)
-      .catch(() => setError('Failed to load SharePoint columns'));
-  }, [selectedListId]);
+    setColumnPage(0);
+    setColumnSearch('');
+    setColumnReadonlyFilter('');
+    loadColumns(selectedListId, 0, '', '');
+  }, [loadColumns, selectedListId]);
+
+  useEffect(() => {
+    if (!selectedListId) return;
+    loadColumns(selectedListId);
+  }, [columnPage, columnReadonlyFilter, columnSearch, loadColumns, selectedListId]);
 
   const handleExtractSites = async () => {
       if (!selectedConnectionId) {
@@ -95,7 +174,7 @@ export default function DataTargetsPage() {
       setError('');
       try {
           await extractSharePointSites(selectedConnectionId);
-          loadSites(selectedConnectionId);
+          loadSites(selectedConnectionId, 0, siteSearch);
       } catch (err: any) {
           setError(err.response?.data?.detail || 'Failed to extract sites');
       } finally {
@@ -116,7 +195,7 @@ export default function DataTargetsPage() {
         hostname: siteForm.hostname,
         site_path: siteForm.sitePath
       });
-      loadSites(selectedConnectionId);
+      loadSites(selectedConnectionId, 0, siteSearch);
       setSelectedSiteId(site.id);
       setShowManualResolve(false);
     } catch (err: any) {
@@ -136,6 +215,7 @@ export default function DataTargetsPage() {
     try {
       const data = await extractSharePointLists(selectedSiteId);
       setLists(data);
+      setListsMeta({ total: data.length, offset: 0 });
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to extract lists');
     } finally {
@@ -153,6 +233,7 @@ export default function DataTargetsPage() {
     try {
       const data = await extractSharePointColumns(selectedListId);
       setColumns(data);
+      setColumnsMeta({ total: data.length, offset: 0 });
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to extract columns');
     } finally {
@@ -231,6 +312,21 @@ export default function DataTargetsPage() {
           </div>
         </div>
 
+        <FilterToolbar className="md:grid-cols-[minmax(0,1fr)_180px]">
+          <input
+            value={siteSearch}
+            onChange={(e) => {
+              setSitePage(0);
+              setSiteSearch(e.target.value);
+            }}
+            placeholder="Search hostname or site path"
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+          />
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-light-text-secondary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-secondary">
+            {sitesMeta.total ?? sites.length} sites
+          </div>
+        </FilterToolbar>
+
         {/* Manual Fallback Form */}
         {showManualResolve && (
             <div className="mt-4 p-4 border border-dashed border-gray-300 rounded bg-gray-50 dark:bg-gray-800/50">
@@ -264,6 +360,17 @@ export default function DataTargetsPage() {
                 </button>
             </div>
         )}
+
+        <ListPagination
+          offset={sitesMeta.offset}
+          total={sitesMeta.total}
+          count={sites.length}
+          hasPrevious={sitePage > 0}
+          hasNext={(sitesMeta.offset ?? 0) + sites.length < (sitesMeta.total ?? sites.length)}
+          onPrevious={() => setSitePage((current) => Math.max(0, current - 1))}
+          onNext={() => setSitePage((current) => current + 1)}
+          className="rounded-lg border border-gray-200 dark:border-gray-800"
+        />
       </section>
 
       <section className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-gray-800 rounded-lg p-6 shadow-sm space-y-4">
@@ -293,6 +400,33 @@ export default function DataTargetsPage() {
             </select>
           </div>
         </div>
+
+        <FilterToolbar className="lg:grid-cols-[minmax(0,1fr)_180px_180px]">
+          <input
+            value={listSearch}
+            onChange={(e) => {
+              setListPage(0);
+              setListSearch(e.target.value);
+            }}
+            placeholder="Search list name or template"
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+          />
+          <select
+            value={listProvisionedFilter}
+            onChange={(e) => {
+              setListPage(0);
+              setListProvisionedFilter(e.target.value);
+            }}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+          >
+            <option value="">All lists</option>
+            <option value="true">Provisioned only</option>
+            <option value="false">Discovered only</option>
+          </select>
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-light-text-secondary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-secondary">
+            {listsMeta.total ?? lists.length} lists
+          </div>
+        </FilterToolbar>
 
         {lists.length === 0 ? (
           <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
@@ -329,6 +463,16 @@ export default function DataTargetsPage() {
             </table>
           </div>
         )}
+        <ListPagination
+          offset={listsMeta.offset}
+          total={listsMeta.total}
+          count={lists.length}
+          hasPrevious={listPage > 0}
+          hasNext={(listsMeta.offset ?? 0) + lists.length < (listsMeta.total ?? lists.length)}
+          onPrevious={() => setListPage((current) => Math.max(0, current - 1))}
+          onNext={() => setListPage((current) => current + 1)}
+          className="rounded-lg border border-gray-200 dark:border-gray-800"
+        />
       </section>
 
       <section className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-gray-800 rounded-lg p-6 shadow-sm space-y-4">
@@ -352,29 +496,67 @@ export default function DataTargetsPage() {
             No columns stored yet. Extract columns for the selected list.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-800">
-                <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Column</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Required</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Read Only</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white dark:bg-dark-surface divide-y divide-gray-200 dark:divide-gray-700">
-                {columns.map((col) => (
-                  <tr key={col.id}>
-                    <td className="px-4 py-2 font-medium">{col.column_name}</td>
-                    <td className="px-4 py-2 text-light-text-secondary dark:text-dark-text-secondary">{col.column_type}</td>
-                    <td className="px-4 py-2 text-light-text-secondary dark:text-dark-text-secondary">{col.is_required ? 'Yes' : 'No'}</td>
-                    <td className="px-4 py-2 text-light-text-secondary dark:text-dark-text-secondary">{col.is_readonly ? 'Yes' : 'No'}</td>
+          <>
+            <FilterToolbar className="lg:grid-cols-[minmax(0,1fr)_180px_180px]">
+              <input
+                value={columnSearch}
+                onChange={(e) => {
+                  setColumnPage(0);
+                  setColumnSearch(e.target.value);
+                }}
+                placeholder="Search column name or type"
+                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+              />
+              <select
+                value={columnReadonlyFilter}
+                onChange={(e) => {
+                  setColumnPage(0);
+                  setColumnReadonlyFilter(e.target.value);
+                }}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+              >
+                <option value="">All columns</option>
+                <option value="true">Read-only only</option>
+                <option value="false">Writable only</option>
+              </select>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-light-text-secondary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-secondary">
+                {columnsMeta.total ?? columns.length} columns
+              </div>
+            </FilterToolbar>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-800">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Column</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Required</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Read Only</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="bg-white dark:bg-dark-surface divide-y divide-gray-200 dark:divide-gray-700">
+                  {columns.map((col) => (
+                    <tr key={col.id}>
+                      <td className="px-4 py-2 font-medium">{col.column_name}</td>
+                      <td className="px-4 py-2 text-light-text-secondary dark:text-dark-text-secondary">{col.column_type}</td>
+                      <td className="px-4 py-2 text-light-text-secondary dark:text-dark-text-secondary">{col.is_required ? 'Yes' : 'No'}</td>
+                      <td className="px-4 py-2 text-light-text-secondary dark:text-dark-text-secondary">{col.is_readonly ? 'Yes' : 'No'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
+        <ListPagination
+          offset={columnsMeta.offset}
+          total={columnsMeta.total}
+          count={columns.length}
+          hasPrevious={columnPage > 0}
+          hasNext={(columnsMeta.offset ?? 0) + columns.length < (columnsMeta.total ?? columns.length)}
+          onPrevious={() => setColumnPage((current) => Math.max(0, current - 1))}
+          onNext={() => setColumnPage((current) => current + 1)}
+          className="rounded-lg border border-gray-200 dark:border-gray-800"
+        />
       </section>
     </div>
   );

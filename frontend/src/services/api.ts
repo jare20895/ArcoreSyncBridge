@@ -194,6 +194,16 @@ export const getConnections = async (): Promise<any[]> => {
   return unwrapData<any[]>(res.data);
 };
 
+export const getConnectionsPage = async (params?: {
+  q?: string;
+  status?: string;
+  offset?: number;
+  limit?: number;
+}): Promise<ApiEnvelope<any[]>> => {
+  const res = await api.get('/sharepoint-connections/', { params });
+  return unwrapEnvelope<any[]>(res.data);
+};
+
 export const createConnection = async (data: any): Promise<any> => {
   const res = await api.post('/sharepoint-connections/', data);
   return unwrapData<any>(res.data);
@@ -210,6 +220,17 @@ export const getSharePointSites = async (connectionId?: string) => {
     params: connectionId ? { connection_id: connectionId } : {}
   });
   return unwrapData<any[]>(res.data);
+};
+
+export const getSharePointSitesPage = async (params?: {
+  connection_id?: string;
+  q?: string;
+  status?: string;
+  offset?: number;
+  limit?: number;
+}): Promise<ApiEnvelope<any[]>> => {
+  const res = await api.get('/data-targets/sites', { params });
+  return unwrapEnvelope<any[]>(res.data);
 };
 
 export const extractSharePointSites = async (connectionId: string, query: string = "*") => {
@@ -229,6 +250,16 @@ export const getSharePointLists = async (siteId: string) => {
   return unwrapData<any[]>(res.data);
 };
 
+export const getSharePointListsPage = async (siteId: string, params?: {
+  q?: string;
+  is_provisioned?: boolean;
+  offset?: number;
+  limit?: number;
+}): Promise<ApiEnvelope<any[]>> => {
+  const res = await api.get(`/data-targets/sites/${siteId}/lists`, { params });
+  return unwrapEnvelope<any[]>(res.data);
+};
+
 export const extractSharePointLists = async (siteId: string) => {
   const res = await api.post(`/data-targets/sites/${siteId}/lists/extract`);
   return unwrapData<any[]>(res.data);
@@ -246,6 +277,16 @@ export const getSharePointColumns = async (listId: string) => {
   return unwrapData<any[]>(res.data);
 };
 
+export const getSharePointColumnsPage = async (listId: string, params?: {
+  q?: string;
+  is_readonly?: boolean;
+  offset?: number;
+  limit?: number;
+}): Promise<ApiEnvelope<any[]>> => {
+  const res = await api.get(`/data-targets/lists/${listId}/columns`, { params });
+  return unwrapEnvelope<any[]>(res.data);
+};
+
 export const extractSharePointColumns = async (listId: string) => {
   const res = await api.post(`/data-targets/lists/${listId}/columns/extract`);
   return unwrapData<any[]>(res.data);
@@ -254,6 +295,17 @@ export const extractSharePointColumns = async (listId: string) => {
 export const getSyncDefinitions = async (): Promise<any[]> => {
   const res = await api.get('/sync-definitions/');
   return unwrapData<any[]>(res.data);
+};
+
+export const getSyncDefinitionsPage = async (params?: {
+  q?: string;
+  sync_mode?: string;
+  is_paused?: boolean;
+  offset?: number;
+  limit?: number;
+}): Promise<ApiEnvelope<any[]>> => {
+  const res = await api.get('/sync-definitions/', { params });
+  return unwrapEnvelope<any[]>(res.data);
 };
 
 export const getSyncDefinition = async (id: string): Promise<any> => {

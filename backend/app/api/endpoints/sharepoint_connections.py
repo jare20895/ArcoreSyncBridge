@@ -1,11 +1,12 @@
-from typing import List
+from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.api.responses import success_response
 from app.core.security import EDITOR_ROLES, VIEWER_ROLES, Principal, require_roles
+from app.db.session import get_db
 from app.models.core import SharePointConnection
 from app.schemas.api import ApiResponse, MessageResponse
 from app.schemas.sharepoint_connection import (
@@ -14,7 +15,6 @@ from app.schemas.sharepoint_connection import (
     SharePointConnectionUpdate
 )
 from app.services.audit import record_audit_event
-from app.api.endpoints.database_instances import get_db # Reusing dependency for now
 
 router = APIRouter()
 
@@ -48,13 +48,26 @@ def create_connection(
 def list_connections(
     request: Request,
     _: Principal = Depends(require_roles(*VIEWER_ROLES)),
-    skip: int = 0,
-    limit: int = 100,
+    q: Optional[str] = Query(None, description="Search by tenant, hostname, or client ID"),
+    status: Optional[str] = Query(None),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db)
 ):
-    stmt = select(SharePointConnection).offset(skip).limit(limit)
-    result = db.execute(stmt)
-    return success_response(request, result.scalars().all())
+    query = db.query(SharePointConnection)
+    if q:
+        search = f"%{q.strip()}%"
+        query = query.filter(
+            SharePointConnection.tenant_id.ilike(search)
+            | SharePointConnection.hostname.ilike(search)
+            | SharePointConnection.client_id.ilike(search)
+        )
+    if status:
+        query = query.filter(SharePointConnection.status == status)
+
+    total = query.count()
+    rows = query.order_by(SharePointConnection.tenant_id).offset(offset).limit(limit).all()
+    return success_response(request, rows, meta={"total": total, "limit": limit, "offset": offset})
 
 @router.get("/{connection_id}", response_model=ApiResponse[SharePointConnectionRead])
 def get_connection(
