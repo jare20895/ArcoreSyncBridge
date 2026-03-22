@@ -35,11 +35,10 @@ from app.services.introspection import PostgresIntrospector, build_dsn
 router = APIRouter()
 
 
-def _serialize_tables(db: Session, database_id: UUID) -> List[DatabaseTableRead]:
+def _serialize_tables(query):
     stmt = (
-        select(DatabaseTable, func.count(TableColumn.id).label("columns_count"))
+        query.with_entities(DatabaseTable, func.count(TableColumn.id).label("columns_count"))
         .outerjoin(TableColumn, TableColumn.table_id == DatabaseTable.id)
-        .where(DatabaseTable.database_id == database_id)
         .group_by(DatabaseTable.id)
         .order_by(DatabaseTable.schema_name, DatabaseTable.table_name)
     )
@@ -66,13 +65,29 @@ def _serialize_tables(db: Session, database_id: UUID) -> List[DatabaseTableRead]
 def list_tables(
     request: Request,
     database_id: UUID = Query(..., description="Logical database ID"),
+    q: str | None = Query(None, description="Search by table or schema"),
+    schema_name: str | None = Query(None, description="Filter by schema"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     _: Principal = Depends(require_roles(*VIEWER_ROLES)),
     db: Session = Depends(get_db),
 ):
     database = db.get(Database, database_id)
     if not database:
         raise HTTPException(status_code=404, detail="Database not found")
-    return success_response(request, _serialize_tables(db, database_id))
+    query = db.query(DatabaseTable).filter(DatabaseTable.database_id == database_id)
+    if q:
+        search = f"%{q.strip()}%"
+        query = query.filter(
+            DatabaseTable.table_name.ilike(search)
+            | DatabaseTable.schema_name.ilike(search)
+        )
+    if schema_name:
+        query = query.filter(DatabaseTable.schema_name == schema_name)
+
+    total = query.count()
+    rows = _serialize_tables(query.offset(offset).limit(limit))
+    return success_response(request, rows, meta={"total": total, "limit": limit, "offset": offset})
 
 
 @router.post("/tables/extract", response_model=ApiResponse[List[DatabaseTableRead]])
@@ -148,7 +163,7 @@ def extract_table_inventory(
             db.commit()
         raise HTTPException(status_code=500, detail=str(e))
 
-    result = _serialize_tables(db, payload.database_id)
+    result = _serialize_tables(db.query(DatabaseTable).filter(DatabaseTable.database_id == payload.database_id))
     record_audit_event(
         db,
         request,

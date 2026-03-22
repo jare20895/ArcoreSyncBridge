@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/router';
-import { getDatabaseInstances, getConnections, getSyncDefinitions, getSystemCounts, getSyncRuns } from '../services/api';
+import { getDatabaseInstancesPage, getConnectionsPage, getSyncDefinitionsPage, getSystemCounts, getSyncRunsPage } from '../services/api';
 import { Activity, Database, AlertTriangle, Layers, BarChart, GitBranch, Grid, Network, Settings, List, FileText } from 'lucide-react';
 import MermaidDiagram from '../components/diagrams/MermaidDiagram';
 import AllSyncsGridView from '../components/diagrams/AllSyncsGridView';
@@ -13,7 +12,6 @@ import DriftMetricsWidget from '../components/DriftMetricsWidget';
 import { generateAllSyncsMermaid } from '../lib/generateAllSyncsMermaid';
 
 export default function Dashboard() {
-  const router = useRouter();
   const [dbs, setDbs] = useState([]);
   const [conns, setConns] = useState([]);
   const [diagramView, setDiagramView] = useState<'single' | 'grid' | 'interactive'>('single');
@@ -38,11 +36,11 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    getDatabaseInstances().then(setDbs).catch(console.error);
-    getConnections().then(setConns).catch(console.error);
-    getSyncDefinitions().then(setSyncDefs).catch(console.error);
+    getDatabaseInstancesPage({ limit: 5, offset: 0 }).then((response) => setDbs(response.data)).catch(console.error);
+    getConnectionsPage({ limit: 5, offset: 0 }).then((response) => setConns(response.data)).catch(console.error);
+    getSyncDefinitionsPage({ limit: 50, offset: 0 }).then((response) => setSyncDefs(response.data)).catch(console.error);
     getSystemCounts().then(setCounts).catch(console.error);
-    getSyncRuns().then(setSyncRuns).catch(console.error);
+    getSyncRunsPage({ limit: 10, offset: 0 }).then((response) => setSyncRuns(response.data)).catch(console.error);
   }, []);
 
   return (

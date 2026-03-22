@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { getSystemSnapshot } from '../services/api';
 import { Activity, Server, HardDrive, Cpu, TrendingUp } from 'lucide-react';
+import { useToast } from './ui/ToastProvider';
 
 interface ContainerMetric {
   name: string;
@@ -25,6 +26,7 @@ interface SnapshotData {
 }
 
 export default function SystemSnapshot() {
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [snapshot, setSnapshot] = useState<SnapshotData | null>(null);
   const [duration, setDuration] = useState(15);
@@ -51,7 +53,11 @@ export default function SystemSnapshot() {
       setSnapshot(data);
     } catch (err) {
       console.error('Error collecting snapshot:', err);
-      alert('Failed to collect system snapshot');
+      showToast({
+        title: 'Snapshot failed',
+        description: 'Failed to collect system snapshot',
+        variant: 'error',
+      });
     } finally {
       clearInterval(progressInterval);
       setLoading(false);

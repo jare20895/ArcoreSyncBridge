@@ -3,21 +3,28 @@ import {
   getDatabases,
   getDatabaseInstances,
   getConnections,
-  getSourceTables,
+  getSourceTablesPage,
   extractSourceTables,
   extractSourceTableDetails,
   getSourceTableDetails,
   provisionSharePointList
 } from '../../services/api';
+import { FilterToolbar } from '../../components/ui/FilterToolbar';
+import { ListPagination } from '../../components/ui/ListPagination';
+
+const PAGE_SIZE = 20;
 
 export default function DataSourcesPage() {
   const [databases, setDatabases] = useState<any[]>([]);
   const [instances, setInstances] = useState<any[]>([]);
   const [connections, setConnections] = useState<any[]>([]);
   const [tables, setTables] = useState<any[]>([]);
+  const [tablesMeta, setTablesMeta] = useState<{ total?: number; offset?: number }>({});
   const [selectedDatabaseId, setSelectedDatabaseId] = useState('');
   const [selectedInstanceId, setSelectedInstanceId] = useState('');
   const [schemaName, setSchemaName] = useState('public');
+  const [tableSearch, setTableSearch] = useState('');
+  const [tablePage, setTablePage] = useState(0);
   const [selectedTableIds, setSelectedTableIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -104,7 +111,7 @@ export default function DataSourcesPage() {
     return tables.sort((a, b) => a.table_name.localeCompare(b.table_name));
   }, [tables]);
 
-  const loadTables = async () => {
+  const loadTables = useCallback(async (page = tablePage, search = tableSearch) => {
     if (!selectedDatabaseId) {
       setError('Select a database first');
       return;
@@ -112,14 +119,30 @@ export default function DataSourcesPage() {
     setLoading(true);
     setError('');
     try {
-      const data = await getSourceTables(selectedDatabaseId);
-      setTables(data);
+      const response = await getSourceTablesPage({
+        database_id: selectedDatabaseId,
+        schema_name: schemaName || undefined,
+        q: search || undefined,
+        offset: page * PAGE_SIZE,
+        limit: PAGE_SIZE,
+      });
+      setTables(response.data);
+      setTablesMeta(response.meta ?? {});
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to load tables');
     } finally {
       setLoading(false);
     }
-  };
+  }, [schemaName, selectedDatabaseId, tablePage, tableSearch]);
+
+  useEffect(() => {
+    if (!selectedDatabaseId) {
+      setTables([]);
+      setTablesMeta({});
+      return;
+    }
+    void loadTables();
+  }, [loadTables, selectedDatabaseId, tablePage, tableSearch]);
 
   const handleExtractTables = async () => {
     if (!selectedDatabaseId || !selectedInstanceId) {
@@ -135,6 +158,8 @@ export default function DataSourcesPage() {
         schema: schemaName || 'public'
       });
       setTables(data);
+      setTablesMeta({ total: data.length, offset: 0 });
+      setTablePage(0);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to extract tables');
     } finally {
@@ -278,7 +303,7 @@ export default function DataSourcesPage() {
           <h2 className="text-lg font-semibold">Source Inventory</h2>
           <div className="flex items-center space-x-2">
             <button
-              onClick={loadTables}
+              onClick={() => void loadTables(0, tableSearch)}
               className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
               disabled={loading}
             >
@@ -350,6 +375,21 @@ export default function DataSourcesPage() {
           </button>
         </div>
 
+        <FilterToolbar className="lg:grid-cols-[minmax(0,1fr)_180px]">
+          <input
+            value={tableSearch}
+            onChange={(e) => {
+              setTablePage(0);
+              setTableSearch(e.target.value);
+            }}
+            placeholder="Search table or schema"
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+          />
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-light-text-secondary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-secondary">
+            {tablesMeta.total ?? tables.length} tables
+          </div>
+        </FilterToolbar>
+
         {tables.length === 0 ? (
           <div className="text-sm text-light-text-secondary dark:text-dark-text-secondary">
             No tables loaded yet. Extract tables to populate the catalog.
@@ -396,6 +436,16 @@ export default function DataSourcesPage() {
             </table>
           </div>
         )}
+        <ListPagination
+          offset={tablesMeta.offset}
+          total={tablesMeta.total}
+          count={tables.length}
+          hasPrevious={tablePage > 0}
+          hasNext={(tablesMeta.offset ?? 0) + tables.length < (tablesMeta.total ?? tables.length)}
+          onPrevious={() => setTablePage((current) => Math.max(0, current - 1))}
+          onNext={() => setTablePage((current) => current + 1)}
+          className="rounded-lg border border-gray-200 dark:border-gray-800"
+        />
       </section>
 
       <section className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-gray-800 rounded-lg p-6 shadow-sm space-y-4">

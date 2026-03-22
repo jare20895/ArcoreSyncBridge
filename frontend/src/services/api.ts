@@ -169,6 +169,17 @@ export const getSourceTables = async (databaseId: string) => {
   return unwrapData<any[]>(res.data);
 };
 
+export const getSourceTablesPage = async (params: {
+  database_id: string;
+  q?: string;
+  schema_name?: string;
+  offset?: number;
+  limit?: number;
+}): Promise<ApiEnvelope<any[]>> => {
+  const res = await api.get('/data-sources/tables', { params });
+  return unwrapEnvelope<any[]>(res.data);
+};
+
 export const extractSourceTables = async (data: { database_id: string; instance_id: string; schema?: string }) => {
   const res = await api.post('/data-sources/tables/extract', data);
   return unwrapData<any[]>(res.data);

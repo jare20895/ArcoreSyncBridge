@@ -1,34 +1,49 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import Layout from '../components/Layout';
-import { Save, Globe, Lock, Shield, User, Database, Cloud, Edit2, EyeOff } from 'lucide-react';
-import { getDatabaseInstances, getConnections, updateDatabaseInstance, updateConnection } from '../services/api';
+import { Save, Globe, Lock, Shield, User, Database, Cloud, Edit2 } from 'lucide-react';
+import { getDatabaseInstancesPage, getConnectionsPage, updateDatabaseInstance, updateConnection } from '../services/api';
 import { useToast } from '../components/ui/ToastProvider';
 import { getErrorMessage } from '../lib/errors';
+import { FilterToolbar } from '../components/ui/FilterToolbar';
+import { ListPagination } from '../components/ui/ListPagination';
+
+const PAGE_SIZE = 10;
 
 export default function SettingsPage() {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('integrations');
   const [dbInstances, setDbInstances] = useState<any[]>([]);
   const [spConnections, setSpConnections] = useState<any[]>([]);
+  const [dbMeta, setDbMeta] = useState<{ total?: number; offset?: number }>({});
+  const [connMeta, setConnMeta] = useState<{ total?: number; offset?: number }>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newSecret, setNewSecret] = useState('');
+  const [dbPage, setDbPage] = useState(0);
+  const [connPage, setConnPage] = useState(0);
+  const [dbSearch, setDbSearch] = useState('');
+  const [connSearch, setConnSearch] = useState('');
 
-  useEffect(() => {
-    if (activeTab === 'security' || activeTab === 'integrations') {
-        fetchData();
-    }
-  }, [activeTab]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
       try {
-          const [dbs, conns] = await Promise.all([getDatabaseInstances(), getConnections()]);
-          setDbInstances(dbs);
-          setSpConnections(conns);
+          const [dbs, conns] = await Promise.all([
+            getDatabaseInstancesPage({ q: dbSearch || undefined, offset: dbPage * PAGE_SIZE, limit: PAGE_SIZE }),
+            getConnectionsPage({ q: connSearch || undefined, offset: connPage * PAGE_SIZE, limit: PAGE_SIZE }),
+          ]);
+          setDbInstances(dbs.data);
+          setDbMeta(dbs.meta ?? {});
+          setSpConnections(conns.data);
+          setConnMeta(conns.meta ?? {});
       } catch (e) {
           console.error("Failed to fetch settings data", e);
       }
-  };
+  }, [connPage, connSearch, dbPage, dbSearch]);
+
+  useEffect(() => {
+    if (activeTab === 'security' || activeTab === 'integrations') {
+        void fetchData();
+    }
+  }, [activeTab, fetchData]);
 
   const handleSaveSecret = async (type: 'DB' | 'SP', id: string) => {
       try {
@@ -44,6 +59,7 @@ export default function SettingsPage() {
           });
           setEditingId(null);
           setNewSecret('');
+          void fetchData();
       } catch (e) {
           console.error(e);
           showToast({
@@ -125,6 +141,21 @@ export default function SettingsPage() {
                         <Link href="/sharepoint-connections/new" className="text-sm text-light-primary dark:text-dark-primary hover:underline font-medium">Add New</Link>
                     </div>
 
+                    <FilterToolbar className="md:grid-cols-[minmax(0,1fr)_180px]">
+                        <input
+                            value={connSearch}
+                            onChange={(e) => {
+                                setConnPage(0);
+                                setConnSearch(e.target.value);
+                            }}
+                            placeholder="Search tenant, hostname, or client ID"
+                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+                        />
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-light-text-secondary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-secondary">
+                            {connMeta.total ?? spConnections.length} connections
+                        </div>
+                    </FilterToolbar>
+
                     <div className="border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
                         {spConnections.map(conn => (
                             <div key={conn.id} className="p-4 flex justify-between items-center">
@@ -139,6 +170,16 @@ export default function SettingsPage() {
                         ))}
                         {spConnections.length === 0 && <div className="p-4 text-sm text-light-text-secondary dark:text-dark-text-secondary italic">No connections found.</div>}
                     </div>
+                    <ListPagination
+                        offset={connMeta.offset}
+                        total={connMeta.total}
+                        count={spConnections.length}
+                        hasPrevious={connPage > 0}
+                        hasNext={(connMeta.offset ?? 0) + spConnections.length < (connMeta.total ?? spConnections.length)}
+                        onPrevious={() => setConnPage((current) => Math.max(0, current - 1))}
+                        onNext={() => setConnPage((current) => current + 1)}
+                        className="rounded-lg border border-gray-200 dark:border-gray-700"
+                    />
                     
                     <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                         <h3 className="font-medium mb-3 text-light-text-primary dark:text-dark-text-primary">Global API Settings</h3>
@@ -178,6 +219,20 @@ export default function SettingsPage() {
                     <h3 className="text-sm font-bold uppercase text-light-text-secondary dark:text-dark-text-secondary tracking-wider flex items-center">
                         <Database size={16} className="mr-2"/> Database Instances
                     </h3>
+                    <FilterToolbar className="md:grid-cols-[minmax(0,1fr)_180px]">
+                        <input
+                            value={dbSearch}
+                            onChange={(e) => {
+                                setDbPage(0);
+                                setDbSearch(e.target.value);
+                            }}
+                            placeholder="Search instance label, host, or database"
+                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-light-text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-primary"
+                        />
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-light-text-secondary dark:border-gray-700 dark:bg-gray-900 dark:text-dark-text-secondary">
+                            {dbMeta.total ?? dbInstances.length} instances
+                        </div>
+                    </FilterToolbar>
                     <div className="border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
                         {dbInstances.map(db => (
                             <div key={db.id} className="p-4 flex justify-between items-center">
@@ -210,6 +265,16 @@ export default function SettingsPage() {
                         ))}
                         {dbInstances.length === 0 && <div className="p-4 text-sm text-light-text-secondary dark:text-dark-text-secondary italic">No database instances found.</div>}
                     </div>
+                    <ListPagination
+                        offset={dbMeta.offset}
+                        total={dbMeta.total}
+                        count={dbInstances.length}
+                        hasPrevious={dbPage > 0}
+                        hasNext={(dbMeta.offset ?? 0) + dbInstances.length < (dbMeta.total ?? dbInstances.length)}
+                        onPrevious={() => setDbPage((current) => Math.max(0, current - 1))}
+                        onNext={() => setDbPage((current) => current + 1)}
+                        className="rounded-lg border border-gray-200 dark:border-gray-700"
+                    />
                 </div>
 
                 {/* SharePoint Secrets */}
