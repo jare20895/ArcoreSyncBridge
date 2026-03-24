@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { getCdcHealth, getDatabaseStats } from '../services/api';
+import { dropHealthReplicationSlot, getCdcHealth, getDatabaseStats, vacuumHealthTable } from '../services/api';
 import { Trash2, RefreshCw, Database, HardDrive, AlertTriangle, CheckCircle, Play, Settings } from 'lucide-react';
 import { useToast } from './ui/ToastProvider';
 import { useConfirmDialog } from './ui/ConfirmDialogProvider';
@@ -86,22 +86,21 @@ export default function CdcManagement() {
 
     setActionLoading(`drop-slot-${slotName}`);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8401'}/api/v1/health/drop-slot`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slot_name: slotName, force: isActive, instance_id: instanceId })
+      await dropHealthReplicationSlot({
+        slot_name: slotName,
+        force,
+        instance_id: instanceId || undefined,
       });
-
-      if (response.ok) {
-        showToast({
-          title: 'Slot dropped',
-          description: `Successfully dropped slot: ${slotName}`,
-          variant: 'success',
-        });
-        await fetchData();
-      } else if (response.status === 409) {
+      showToast({
+        title: 'Slot dropped',
+        description: `Successfully dropped slot: ${slotName}`,
+        variant: 'success',
+      });
+      await fetchData();
+    } catch (err: any) {
+      if (err?.response?.status === 409) {
         // Slot is active, ask if user wants to force
-        const error = await response.json();
+        const error = err.response.data;
         const forceConfirmed = await confirm({
           title: 'Force drop active slot?',
           description: `${error.detail}\n\nDo you want to force-drop this slot by terminating the connection?`,
@@ -112,19 +111,12 @@ export default function CdcManagement() {
           await handleDropSlot(slotName, true);
         }
       } else {
-        const error = await response.json();
         showToast({
           title: 'Slot drop failed',
-          description: error.detail || 'Unknown error',
+          description: err?.response?.data?.detail || err?.message || 'Unknown error',
           variant: 'error',
         });
       }
-    } catch (err: any) {
-      showToast({
-        title: 'Slot drop failed',
-        description: err.message,
-        variant: 'error',
-      });
     } finally {
       setActionLoading(null);
     }
@@ -172,17 +164,8 @@ export default function CdcManagement() {
         const instanceId = slot?.instance_id;
 
         try {
-          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8401'}/api/v1/health/drop-slot`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ slot_name: slotName, force: isActive, instance_id: instanceId })
-          });
-
-          if (response.ok) {
-            successCount++;
-          } else {
-            failCount++;
-          }
+          await dropHealthReplicationSlot({ slot_name: slotName, force: isActive, instance_id: instanceId || undefined });
+          successCount++;
         } catch {
           failCount++;
         }
@@ -220,31 +203,17 @@ export default function CdcManagement() {
 
     setActionLoading(`vacuum-${schema}-${table}`);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8401'}/api/v1/health/vacuum-table`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schema, table, full })
+      await vacuumHealthTable({ schema, table, full });
+      showToast({
+        title: `${vacuumType} completed`,
+        description: `Successfully ran ${vacuumType} on ${schema}.${table}`,
+        variant: 'success',
       });
-
-      if (response.ok) {
-        showToast({
-          title: `${vacuumType} completed`,
-          description: `Successfully ran ${vacuumType} on ${schema}.${table}`,
-          variant: 'success',
-        });
-        await fetchData();
-      } else {
-        const error = await response.json();
-        showToast({
-          title: `${vacuumType} failed`,
-          description: error.detail || 'Unknown error',
-          variant: 'error',
-        });
-      }
+      await fetchData();
     } catch (err: any) {
       showToast({
         title: `${vacuumType} failed`,
-        description: err.message,
+        description: err?.response?.data?.detail || err?.message,
         variant: 'error',
       });
     } finally {
@@ -277,11 +246,7 @@ export default function CdcManagement() {
     try {
       for (const tableKey of Array.from(selectedTables)) {
         const [schema, table] = tableKey.split('.');
-        await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8401'}/api/v1/health/vacuum-table`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ schema, table, full })
-        });
+        await vacuumHealthTable({ schema, table, full });
       }
       showToast({
         title: `${vacuumType} completed`,

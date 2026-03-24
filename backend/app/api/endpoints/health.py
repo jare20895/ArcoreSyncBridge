@@ -306,7 +306,7 @@ def drop_replication_slot(
                     client.execute_raw(f"SELECT pg_terminate_backend({active_pid})", autocommit=True)
                     # Wait/Retry logic could be added here similar to below, but keeping it simple for now or copying it
                 
-                client.execute_raw(f"SELECT pg_drop_replication_slot('{request.slot_name}')", autocommit=True)
+                client.execute_raw(f"SELECT pg_drop_replication_slot('{payload.slot_name}')", autocommit=True)
                 
             except Exception as e:
                 error_str = str(e)
@@ -353,7 +353,7 @@ def drop_replication_slot(
 
                 # Drop the slot
                 try:
-                    cur.execute(f"SELECT pg_drop_replication_slot('{request.slot_name}')")
+                    cur.execute(f"SELECT pg_drop_replication_slot('{payload.slot_name}')")
                 except Exception as e:
                     error_str = str(e)
                     if "is active" in error_str:

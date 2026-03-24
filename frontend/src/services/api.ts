@@ -510,6 +510,24 @@ export const getDatabaseStats = async () => {
   return unwrapData<any>(res.data);
 };
 
+export const dropHealthReplicationSlot = async (data: {
+  slot_name: string;
+  force?: boolean;
+  instance_id?: string;
+}) => {
+  const res = await api.post('/health/drop-slot', data);
+  return unwrapData<any>(res.data);
+};
+
+export const vacuumHealthTable = async (data: {
+  schema: string;
+  table: string;
+  full?: boolean;
+}) => {
+  const res = await api.post('/health/vacuum-table', data);
+  return unwrapData<any>(res.data);
+};
+
 // Metrics
 export const getSystemCounts = async () => {
   const res = await api.get('/metrics/counts');
