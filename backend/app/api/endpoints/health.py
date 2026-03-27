@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pydantic import BaseModel
 from uuid import UUID
+from psycopg2 import sql as psycopg2_sql
 
 from app.api.endpoints.database_instances import get_db
 from app.api.responses import success_response
@@ -33,6 +34,102 @@ class VacuumTableRequest(BaseModel):
     table: str
     full: bool = False
 
+
+def _system_dsn() -> str:
+    return (
+        f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}"
+        f"@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
+    )
+
+
+def _connect_system_db():
+    conn = psycopg2.connect(_system_dsn())
+    conn.autocommit = True
+    return conn
+
+
+def _validate_identifier_part(value: str, field_name: str) -> None:
+    if not value.replace("_", "").isalnum():
+        raise HTTPException(status_code=400, detail=f"Invalid {field_name}")
+
+
+def _wait_for_slot_release(cur, slot_name: str, attempts: int = 5, sleep_seconds: float = 0.5) -> None:
+    import time
+
+    for _ in range(attempts):
+        time.sleep(sleep_seconds)
+        cur.execute(
+            "SELECT active_pid FROM pg_replication_slots WHERE slot_name = %s",
+            (slot_name,),
+        )
+        check_row = cur.fetchone()
+        if check_row and not check_row[0]:
+            return
+
+
+def _drop_slot_with_client(client: DatabaseClient, slot_name: str, force: bool) -> None:
+    rows = client.execute_raw(
+        "SELECT slot_name, active_pid FROM pg_replication_slots WHERE slot_name = %s",
+        (slot_name,),
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"Replication slot '{slot_name}' not found on instance")
+
+    _, active_pid = rows[0]
+    if active_pid and force:
+        client.execute_raw(
+            "SELECT pg_terminate_backend(%s)",
+            (active_pid,),
+            autocommit=True,
+        )
+
+    try:
+        client.execute_raw(
+            "SELECT pg_drop_replication_slot(%s)",
+            (slot_name,),
+            autocommit=True,
+        )
+    except Exception as exc:
+        if "is active" in str(exc):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Replication slot '{slot_name}' is active. Use force=true to terminate the connection first.",
+            ) from exc
+        raise
+
+
+def _drop_slot_with_cursor(cur, slot_name: str, force: bool) -> None:
+    cur.execute(
+        "SELECT slot_name, active_pid FROM pg_replication_slots WHERE slot_name = %s",
+        (slot_name,),
+    )
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Replication slot '{slot_name}' not found")
+
+    _, active_pid = row
+    if active_pid and force:
+        cur.execute("SELECT pg_terminate_backend(%s)", (active_pid,))
+        _wait_for_slot_release(cur, slot_name)
+
+    try:
+        cur.execute("SELECT pg_drop_replication_slot(%s)", (slot_name,))
+    except Exception as exc:
+        if "is active" in str(exc):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Replication slot '{slot_name}' is active. Use force=true to terminate the connection first.",
+            ) from exc
+        raise
+
+
+def _build_vacuum_statement(schema_name: str, table_name: str, full: bool):
+    base = "VACUUM FULL {}.{}" if full else "VACUUM {}.{}"
+    return psycopg2_sql.SQL(base).format(
+        psycopg2_sql.Identifier(schema_name),
+        psycopg2_sql.Identifier(table_name),
+    )
+
 @router.get("/cdc-health", response_model=ApiResponse[Dict[str, Any]])
 def get_cdc_health(
     request: Request,
@@ -48,8 +145,7 @@ def get_cdc_health(
     """
     try:
         # Connect to the main database for system WAL checks
-        dsn = f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
-        conn = psycopg2.connect(dsn)
+        conn = psycopg2.connect(_system_dsn())
         conn.autocommit = True
 
         with conn.cursor() as cur:
@@ -220,8 +316,7 @@ def get_database_stats(
 ):
     """Get database performance statistics"""
     try:
-        dsn = f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
-        conn = psycopg2.connect(dsn)
+        conn = psycopg2.connect(_system_dsn())
         conn.autocommit = True
 
         with conn.cursor() as cur:
@@ -287,83 +382,18 @@ def drop_replication_slot(
     """Drop a replication slot"""
     try:
         if payload.instance_id:
-            # Drop from specific instance using DatabaseClient/Replication logic
             instance = db.get(DatabaseInstance, UUID(payload.instance_id))
             if not instance:
                 raise HTTPException(status_code=404, detail="Database instance not found")
-            
-            client = DatabaseClient(instance)
-            
-            # Check existence
-            try:
-                rows = client.execute_raw("SELECT slot_name, active_pid FROM pg_replication_slots WHERE slot_name = %s", (payload.slot_name,))
-                if not rows:
-                    raise HTTPException(status_code=404, detail=f"Replication slot '{payload.slot_name}' not found on instance")
-                
-                slot_name, active_pid = rows[0]
-                
-                if active_pid and payload.force:
-                    client.execute_raw(f"SELECT pg_terminate_backend({active_pid})", autocommit=True)
-                    # Wait/Retry logic could be added here similar to below, but keeping it simple for now or copying it
-                
-                client.execute_raw(f"SELECT pg_drop_replication_slot('{payload.slot_name}')", autocommit=True)
-                
-            except Exception as e:
-                error_str = str(e)
-                if "is active" in error_str:
-                        raise HTTPException(
-                            status_code=409,
-                            detail=f"Replication slot '{payload.slot_name}' is active. Use force=true to terminate the connection first."
-                    )
-                raise HTTPException(status_code=500, detail=f"Failed to drop slot: {str(e)}")
+            _drop_slot_with_client(DatabaseClient(instance), payload.slot_name, payload.force)
 
         else:
-            # Legacy/System drop (Local DB)
-            dsn = f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
-            conn = psycopg2.connect(dsn)
-            conn.autocommit = True
-
-            with conn.cursor() as cur:
-                # Check if slot exists and get active pid
-                cur.execute(
-                    "SELECT slot_name, active_pid FROM pg_replication_slots WHERE slot_name = %s",
-                    (payload.slot_name,)
-                )
-                row = cur.fetchone()
-                if not row:
-                    raise HTTPException(status_code=404, detail=f"Replication slot '{payload.slot_name}' not found")
-
-                slot_name, active_pid = row
-
-                # If slot is active and force=True, terminate the backend
-                if active_pid and payload.force:
-                    cur.execute(f"SELECT pg_terminate_backend({active_pid})")
-                    # Wait for the backend to terminate and retry a few times
-                    import time
-                    for i in range(5):
-                        time.sleep(0.5)
-                        cur.execute(
-                            "SELECT active_pid FROM pg_replication_slots WHERE slot_name = %s",
-                            (payload.slot_name,)
-                        )
-                        check_row = cur.fetchone()
-                        if check_row and not check_row[0]:
-                            # Slot is no longer active
-                            break
-
-                # Drop the slot
-                try:
-                    cur.execute(f"SELECT pg_drop_replication_slot('{payload.slot_name}')")
-                except Exception as e:
-                    error_str = str(e)
-                    if "is active" in error_str:
-                        raise HTTPException(
-                            status_code=409,
-                            detail=f"Replication slot '{payload.slot_name}' is active. Use force=true to terminate the connection first."
-                        )
-                    raise
-
-            conn.close()
+            conn = _connect_system_db()
+            try:
+                with conn.cursor() as cur:
+                    _drop_slot_with_cursor(cur, payload.slot_name, payload.force)
+            finally:
+                conn.close()
 
         record_audit_event(
             db,
@@ -393,30 +423,22 @@ def vacuum_table(
 ):
     """Run VACUUM on a table"""
     try:
-        # Validate schema and table name to prevent SQL injection
-        if not payload.schema.replace('_', '').isalnum():
-            raise HTTPException(status_code=400, detail="Invalid schema name")
-        if not payload.table.replace('_', '').isalnum():
-            raise HTTPException(status_code=400, detail="Invalid table name")
+        _validate_identifier_part(payload.schema, "schema name")
+        _validate_identifier_part(payload.table, "table name")
 
-        dsn = f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
-        conn = psycopg2.connect(dsn)
-        conn.autocommit = True
+        conn = _connect_system_db()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT tablename FROM pg_tables WHERE schemaname = %s AND tablename = %s",
+                    (payload.schema, payload.table),
+                )
+                if not cur.fetchone():
+                    raise HTTPException(status_code=404, detail=f"Table '{payload.schema}.{payload.table}' not found")
 
-        with conn.cursor() as cur:
-            # Check if table exists
-            cur.execute(
-                "SELECT tablename FROM pg_tables WHERE schemaname = %s AND tablename = %s",
-                (payload.schema, payload.table)
-            )
-            if not cur.fetchone():
-                raise HTTPException(status_code=404, detail=f"Table '{payload.schema}.{payload.table}' not found")
-
-            # Run VACUUM
-            vacuum_cmd = f"VACUUM {'FULL' if payload.full else ''} {payload.schema}.{payload.table}"
-            cur.execute(vacuum_cmd)
-
-        conn.close()
+                cur.execute(_build_vacuum_statement(payload.schema, payload.table, payload.full))
+        finally:
+            conn.close()
 
         record_audit_event(
             db,
