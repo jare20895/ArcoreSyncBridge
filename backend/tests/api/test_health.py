@@ -58,7 +58,7 @@ def test_drop_slot_uses_parameterized_queries(monkeypatch):
 
     fake_cursor = FakeCursor(responses=[("slot_a", None)])
     fake_connection = FakeConnection(fake_cursor)
-    monkeypatch.setattr(health_endpoints.psycopg2, "connect", lambda _dsn: fake_connection)
+    monkeypatch.setattr(health_endpoints.MaintenanceService, "connect_system_db", classmethod(lambda cls: fake_connection))
 
     response = client.post(
         "/api/v1/health/drop-slot",
@@ -85,7 +85,7 @@ def test_drop_slot_returns_conflict_for_active_slot(monkeypatch):
 
     fake_cursor = FakeCursor(responses=[("slot_a", 42)], raise_on_drop=True)
     fake_connection = FakeConnection(fake_cursor)
-    monkeypatch.setattr(health_endpoints.psycopg2, "connect", lambda _dsn: fake_connection)
+    monkeypatch.setattr(health_endpoints.MaintenanceService, "connect_system_db", classmethod(lambda cls: fake_connection))
 
     response = client.post(
         "/api/v1/health/drop-slot",
@@ -104,7 +104,7 @@ def test_vacuum_table_uses_composed_identifier_query(monkeypatch):
 
     fake_cursor = FakeCursor(responses=[("widgets",)])
     fake_connection = FakeConnection(fake_cursor)
-    monkeypatch.setattr(health_endpoints.psycopg2, "connect", lambda _dsn: fake_connection)
+    monkeypatch.setattr(health_endpoints.MaintenanceService, "connect_system_db", classmethod(lambda cls: fake_connection))
 
     response = client.post(
         "/api/v1/health/vacuum-table",
