@@ -1,8 +1,9 @@
 import uuid
 from collections.abc import Callable
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
+import jwt
 from fastapi import Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -22,6 +23,97 @@ class Principal(BaseModel):
     email: str
     role: str
     auth_mode: str
+
+
+def _resolve_display_name(claims: dict[str, Any]) -> str:
+    for claim_name in settings.auth_jwt_display_name_claims:
+        value = claims.get(claim_name)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    fallback_email = _resolve_email(claims)
+    return fallback_email.split("@", 1)[0]
+
+
+def _resolve_email(claims: dict[str, Any]) -> str:
+    for claim_name in settings.auth_jwt_email_claims:
+        value = claims.get(claim_name)
+        if isinstance(value, str) and value.strip():
+            return value.lower().strip()
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="JWT token is missing a supported email claim",
+    )
+
+
+def _decode_jwt_token(token: str) -> dict[str, Any]:
+    decode_kwargs: dict[str, Any] = {
+        "algorithms": settings.auth_jwt_algorithms,
+    }
+    if settings.AUTH_JWT_AUDIENCE:
+        decode_kwargs["audience"] = settings.AUTH_JWT_AUDIENCE
+    if settings.AUTH_JWT_ISSUER:
+        decode_kwargs["issuer"] = settings.AUTH_JWT_ISSUER
+
+    try:
+        if settings.AUTH_JWT_JWKS_URL:
+            signing_key = jwt.PyJWKClient(settings.AUTH_JWT_JWKS_URL).get_signing_key_from_jwt(token).key
+            return jwt.decode(token, signing_key, **decode_kwargs)
+
+        secret = settings.AUTH_JWT_SECRET or settings.SECRET_KEY
+        return jwt.decode(token, secret, **decode_kwargs)
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid bearer token: {exc}",
+        ) from exc
+
+
+def _resolve_principal_for_email(
+    db: Session,
+    *,
+    email: str,
+    auth_mode: str,
+    display_name: Optional[str] = None,
+) -> Principal:
+    user = db.query(AppUser).filter(AppUser.email == email).one_or_none()
+    if user:
+        if user.status != "ACTIVE":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is disabled",
+            )
+        user.last_login_at = datetime.utcnow()
+        db.commit()
+        db.refresh(user)
+        return Principal(
+            user_id=user.id,
+            email=user.email,
+            role=user.role,
+            auth_mode=auth_mode,
+        )
+
+    if not settings.AUTH_AUTO_PROVISION_USERS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is not provisioned",
+        )
+
+    user = AppUser(
+        email=email,
+        display_name=display_name or email.split("@", 1)[0],
+        role="platform_admin" if email in settings.auth_bootstrap_emails else settings.AUTH_DEFAULT_ROLE,
+        status="ACTIVE",
+        last_login_at=datetime.utcnow(),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return Principal(
+        user_id=user.id,
+        email=user.email,
+        role=user.role,
+        auth_mode=auth_mode,
+    )
 
 
 def get_current_principal(
@@ -44,45 +136,29 @@ def get_current_principal(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication email header is required",
             )
-
-        user = db.query(AppUser).filter(AppUser.email == normalized_email).one_or_none()
-        if user:
-            if user.status != "ACTIVE":
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="User account is disabled",
-                )
-            user.last_login_at = datetime.utcnow()
-            db.commit()
-            db.refresh(user)
-            return Principal(
-                user_id=user.id,
-                email=user.email,
-                role=user.role,
-                auth_mode="header",
-            )
-
-        if not settings.AUTH_AUTO_PROVISION_USERS:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User is not provisioned",
-            )
-
-        user = AppUser(
+        return _resolve_principal_for_email(
+            db,
             email=normalized_email,
-            display_name=normalized_email.split("@", 1)[0],
-            role="platform_admin" if normalized_email in settings.auth_bootstrap_emails else settings.AUTH_DEFAULT_ROLE,
-            status="ACTIVE",
-            last_login_at=datetime.utcnow(),
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        return Principal(
-            user_id=user.id,
-            email=user.email,
-            role=user.role,
             auth_mode="header",
+        )
+
+    if settings.AUTH_MODE == "jwt":
+        authorization = request.headers.get("Authorization")
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Bearer token is required",
+            )
+
+        token = authorization.split(" ", 1)[1].strip()
+        claims = _decode_jwt_token(token)
+        email = _resolve_email(claims)
+        display_name = _resolve_display_name(claims)
+        return _resolve_principal_for_email(
+            db,
+            email=email,
+            auth_mode="jwt",
+            display_name=display_name,
         )
 
     raise HTTPException(

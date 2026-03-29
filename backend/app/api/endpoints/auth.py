@@ -9,11 +9,25 @@ from app.core.security import ADMIN_ROLES, Principal, get_current_principal, req
 from app.db.session import get_db
 from app.models.platform import AppUser
 from app.schemas.api import ApiResponse
-from app.schemas.auth import AppUserCreate, AppUserRead, AppUserUpdate, PrincipalRead
+from app.schemas.auth import AppUserCreate, AppUserRead, AppUserUpdate, AuthConfigRead, PrincipalRead
+from app.core.config import settings
 from app.services.audit import record_audit_event
 
 
 router = APIRouter()
+
+
+@router.get("/config", response_model=ApiResponse[AuthConfigRead])
+def get_auth_config(request: Request):
+    provider = "azuread" if settings.AUTH_MODE == "jwt" and settings.AUTH_JWT_ISSUER and "login.microsoftonline.com" in settings.AUTH_JWT_ISSUER else None
+    return success_response(
+        request,
+        {
+            "auth_mode": settings.AUTH_MODE,
+            "interactive_login": settings.AUTH_MODE == "jwt",
+            "provider": provider,
+        },
+    )
 
 
 @router.get("/me", response_model=ApiResponse[PrincipalRead])

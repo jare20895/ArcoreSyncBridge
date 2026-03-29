@@ -2,7 +2,7 @@ import React, { ReactNode, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { cn } from '../lib/utils';
-import { getCurrentUser } from '../services/api';
+import { useAuth } from '@/components/auth/AuthProvider';
 import { 
   LayoutDashboard, 
   Database, 
@@ -35,6 +35,7 @@ const TABS = [
 
 export default function Layout({ children }: LayoutProps) {
   const router = useRouter();
+  const { principal, logout, requiresLogin } = useAuth();
 
   // Define connection-related routes
   const connectionRoutes = ['/database-instances', '/applications', '/databases', '/sharepoint-connections'];
@@ -50,8 +51,6 @@ export default function Layout({ children }: LayoutProps) {
   });
 
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [principal, setPrincipal] = useState<{ email: string; role: string; auth_mode: string } | null>(null);
-
   useEffect(() => {
     // Check local storage or system preference
     if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
@@ -61,12 +60,6 @@ export default function Layout({ children }: LayoutProps) {
       setIsDarkMode(false);
       document.documentElement.classList.remove('dark');
     }
-  }, []);
-
-  useEffect(() => {
-    getCurrentUser()
-      .then(setPrincipal)
-      .catch(() => setPrincipal(null));
   }, []);
 
   const toggleDarkMode = () => {
@@ -144,6 +137,17 @@ export default function Layout({ children }: LayoutProps) {
           <Link href="/settings" className="p-2 text-light-text-secondary hover:text-light-primary dark:text-gray-400 dark:hover:text-white transition-colors" title="Settings">
             <Settings size={20} />
           </Link>
+
+          {requiresLogin && (
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-light-text-secondary transition-colors hover:border-light-primary hover:text-light-primary dark:border-gray-700 dark:text-gray-300 dark:hover:border-dark-primary dark:hover:text-dark-primary"
+              title="Sign out"
+            >
+              Sign out
+            </button>
+          )}
           
           <Link href="/settings?tab=profile" className="h-8 w-8 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center text-xs hover:ring-2 ring-light-primary transition-all" title="Profile">
             <User size={16} className="text-gray-600 dark:text-gray-300" />

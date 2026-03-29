@@ -12,6 +12,12 @@ class PrincipalRead(BaseModel):
     auth_mode: str
 
 
+class AuthConfigRead(BaseModel):
+    auth_mode: str
+    interactive_login: bool
+    provider: Optional[str] = None
+
+
 class AppUserRead(BaseModel):
     id: UUID
     email: str

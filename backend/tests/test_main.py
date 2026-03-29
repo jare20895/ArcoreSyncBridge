@@ -1,5 +1,6 @@
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+import jwt
 from app.main import app
 from app.core.config import settings
 
@@ -131,6 +132,53 @@ def test_auth_me_reads_header_principal_and_provisions_user(monkeypatch):
     assert body["email"] == "architect@example.com"
     assert body["role"] == "viewer"
     assert body["auth_mode"] == "header"
+    assert body["user_id"]
+
+
+def test_auth_config_exposes_jwt_mode(monkeypatch):
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt")
+    monkeypatch.setattr(settings, "AUTH_JWT_ISSUER", "https://login.microsoftonline.com/example-tenant/v2.0")
+
+    response = client.get("/api/v1/auth/config")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "auth_mode": "jwt",
+        "interactive_login": True,
+        "provider": "azuread",
+    }
+
+
+def test_auth_me_reads_bearer_token_in_jwt_mode(monkeypatch):
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt")
+    monkeypatch.setattr(settings, "AUTH_JWT_SECRET", "unit-test-secret")
+    monkeypatch.setattr(settings, "AUTH_JWT_AUDIENCE", "arcore-api")
+    monkeypatch.setattr(settings, "AUTH_JWT_ISSUER", "https://issuer.example.com")
+    monkeypatch.setattr(settings, "AUTH_JWT_ALGORITHMS", "HS256")
+    monkeypatch.setattr(settings, "AUTH_AUTO_PROVISION_USERS", True)
+    monkeypatch.setattr(settings, "AUTH_DEFAULT_ROLE", "viewer")
+
+    token = jwt.encode(
+        {
+            "preferred_username": "jwt-user@example.com",
+            "name": "JWT User",
+            "aud": "arcore-api",
+            "iss": "https://issuer.example.com",
+        },
+        "unit-test-secret",
+        algorithm="HS256",
+    )
+
+    response = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["email"] == "jwt-user@example.com"
+    assert body["role"] == "viewer"
+    assert body["auth_mode"] == "jwt"
     assert body["user_id"]
 
 

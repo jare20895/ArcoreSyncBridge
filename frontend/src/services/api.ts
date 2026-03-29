@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8401';
+let accessTokenProvider: null | (() => Promise<string | null>) = null;
 
 const api = axios.create({
   baseURL: `${API_URL}/api/v1`,
@@ -16,6 +17,23 @@ type ApiMeta = {
 type ApiEnvelope<T> = {
   data: T;
   meta: ApiMeta;
+};
+
+export type Principal = {
+  user_id?: string | null;
+  email: string;
+  role: string;
+  auth_mode: string;
+};
+
+export type AuthConfig = {
+  auth_mode: string;
+  interactive_login: boolean;
+  provider?: string | null;
+};
+
+export const setAccessTokenProvider = (provider: null | (() => Promise<string | null>)) => {
+  accessTokenProvider = provider;
 };
 
 const unwrapData = <T>(payload: any): T => {
@@ -34,6 +52,16 @@ const unwrapEnvelope = <T>(payload: any): ApiEnvelope<T> => {
     meta: {},
   };
 };
+
+api.interceptors.request.use(async (config) => {
+  if (!config.headers?.Authorization && accessTokenProvider) {
+    const token = await accessTokenProvider();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  return config;
+});
 
 api.interceptors.response.use((response) => {
   const requestId = response.headers['x-request-id'];
@@ -388,6 +416,11 @@ export const resetSyncCursors = async (syncDefId: string) => {
 export const getCurrentUser = async (): Promise<any> => {
   const res = await api.get('/auth/me');
   return unwrapData<any>(res.data);
+};
+
+export const getAuthConfig = async (): Promise<AuthConfig> => {
+  const res = await api.get('/auth/config');
+  return unwrapData<AuthConfig>(res.data);
 };
 
 export const getSyncRuns = async () => {
