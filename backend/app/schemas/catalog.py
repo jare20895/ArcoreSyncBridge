@@ -2,13 +2,15 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TableInventoryExtractRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     database_id: UUID
     instance_id: UUID
-    schema: str = "public"
+    schema_name: str = Field("public", alias="schema")
 
 
 class TableDetailsExtractRequest(BaseModel):
@@ -28,8 +30,7 @@ class TableColumnRead(BaseModel):
     is_primary_key: bool
     is_unique: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TableConstraintRead(BaseModel):
@@ -41,8 +42,7 @@ class TableConstraintRead(BaseModel):
     referenced_table: Optional[str]
     definition: Optional[str]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TableIndexRead(BaseModel):
@@ -54,8 +54,7 @@ class TableIndexRead(BaseModel):
     columns: List[str]
     definition: Optional[str]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DatabaseTableRead(BaseModel):
@@ -69,8 +68,7 @@ class DatabaseTableRead(BaseModel):
     last_introspected_at: Optional[datetime]
     columns_count: int = 0
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DatabaseTableDetailRead(BaseModel):
@@ -96,8 +94,7 @@ class SharePointSiteRead(BaseModel):
     web_url: str
     status: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SharePointListRead(BaseModel):
@@ -111,8 +108,7 @@ class SharePointListRead(BaseModel):
     last_provisioned_at: Optional[datetime]
     columns_count: int = 0
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SharePointColumnRead(BaseModel):
@@ -123,5 +119,4 @@ class SharePointColumnRead(BaseModel):
     is_required: bool
     is_readonly: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

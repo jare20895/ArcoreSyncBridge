@@ -8,7 +8,7 @@ from app.db.session import get_db
 from app.core.security import VIEWER_ROLES, Principal, require_roles
 from app.schemas.api import ApiResponse
 from app.models.core import SyncRun
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 
 router = APIRouter()
@@ -24,8 +24,7 @@ class SyncRunRead(BaseModel):
     items_failed: int
     error_message: Optional[str]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 @router.get("/", response_model=ApiResponse[List[SyncRunRead]])
 def list_runs(

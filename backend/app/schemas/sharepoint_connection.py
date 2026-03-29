@@ -1,6 +1,6 @@
 from typing import List, Optional
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 class SharePointConnectionBase(BaseModel):
     tenant_id: str = Field(..., description="Azure AD Tenant ID")
@@ -26,5 +26,4 @@ class SharePointConnectionRead(SharePointConnectionBase):
     id: UUID
     # Exclude client_secret from read
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

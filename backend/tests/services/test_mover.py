@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock
 from app.services.mover import MoveManager
 from app.models.core import SyncLedgerEntry
-from datetime import datetime
+from app.core.time import utc_now
 
 class TestMoveManager(unittest.TestCase):
     def setUp(self):
@@ -15,7 +15,7 @@ class TestMoveManager(unittest.TestCase):
             source_identity_hash="hash-1",
             sp_list_id="list-old",
             sp_item_id=100,
-            last_sync_ts=datetime.utcnow()
+            last_sync_ts=utc_now()
         )
         self.item_data = {"Title": "Moved Item"}
 

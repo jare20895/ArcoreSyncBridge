@@ -1,6 +1,5 @@
 import uuid
 from collections.abc import Callable
-from datetime import datetime
 from typing import Any, Optional
 
 import jwt
@@ -9,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.time import utc_now
 from app.db.session import get_db
 from app.models.platform import AppUser
 
@@ -82,7 +82,7 @@ def _resolve_principal_for_email(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User account is disabled",
             )
-        user.last_login_at = datetime.utcnow()
+        user.last_login_at = utc_now()
         db.commit()
         db.refresh(user)
         return Principal(
@@ -103,7 +103,7 @@ def _resolve_principal_for_email(
         display_name=display_name or email.split("@", 1)[0],
         role="platform_admin" if email in settings.auth_bootstrap_emails else settings.AUTH_DEFAULT_ROLE,
         status="ACTIVE",
-        last_login_at=datetime.utcnow(),
+        last_login_at=utc_now(),
     )
     db.add(user)
     db.commit()

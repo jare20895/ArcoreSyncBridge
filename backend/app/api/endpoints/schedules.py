@@ -3,7 +3,7 @@ from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.responses import success_response
 from app.core.security import OPERATOR_ROLES, VIEWER_ROLES, Principal, require_roles
@@ -48,8 +48,7 @@ class AuditLogResponse(BaseModel):
     skip_reason: Optional[str]
     sync_run_id: Optional[UUID]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Endpoints

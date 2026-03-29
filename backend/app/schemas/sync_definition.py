@@ -1,7 +1,7 @@
 from typing import List, Optional, Dict
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # Field Mapping
 class FieldMappingBase(BaseModel):
@@ -24,8 +24,7 @@ class FieldMappingCreate(FieldMappingBase):
 class FieldMappingRead(FieldMappingBase):
     id: UUID
     sync_def_id: UUID
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Key Column
 class SyncKeyColumnBase(BaseModel):
@@ -38,8 +37,7 @@ class SyncKeyColumnCreate(SyncKeyColumnBase):
 
 class SyncKeyColumnRead(SyncKeyColumnBase):
     sync_def_id: UUID
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Source
 class SyncSourceBase(BaseModel):
@@ -53,8 +51,7 @@ class SyncSourceCreate(SyncSourceBase):
 
 class SyncSourceRead(SyncSourceBase):
     sync_def_id: UUID
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Target
 class SyncTargetBase(BaseModel):
@@ -70,8 +67,7 @@ class SyncTargetCreate(SyncTargetBase):
 
 class SyncTargetRead(SyncTargetBase):
     sync_def_id: UUID
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Sync Definition
 class SyncDefinitionBase(BaseModel):
@@ -134,5 +130,4 @@ class SyncDefinitionRead(SyncDefinitionBase):
     key_columns: List[SyncKeyColumnRead]
     field_mappings: List[FieldMappingRead]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

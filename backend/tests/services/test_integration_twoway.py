@@ -6,6 +6,7 @@ from app.services.synchronizer import Synchronizer
 from app.services.pusher import Pusher
 from app.models.core import SyncDefinition, SyncLedgerEntry, SyncSource, SyncTarget, DatabaseInstance, SharePointConnection, FieldMapping
 from app.models.inventory import SharePointList
+from app.core.time import utc_now
 import hashlib
 import json
 
@@ -240,7 +241,7 @@ class TestTwoWayIntegration(unittest.TestCase):
         
         # Mock Data
         # DB Row
-        row_data = {"sku": "P-100", "name": "New Product", "updated_at": datetime.utcnow()}
+        row_data = {"sku": "P-100", "name": "New Product", "updated_at": utc_now()}
         mock_db_client.fetch_changed_rows.return_value = [row_data]
         
         # Ledger Entry (Matches Content)

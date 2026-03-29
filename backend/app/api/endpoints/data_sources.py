@@ -113,7 +113,7 @@ def extract_table_inventory(
     try:
         dsn = build_dsn(instance, database.database_name)
         introspector = PostgresIntrospector(dsn)
-        inventory = introspector.get_table_inventory(payload.schema)
+        inventory = introspector.get_table_inventory(payload.schema_name)
 
         created = 0
         updated = 0
@@ -150,7 +150,7 @@ def extract_table_inventory(
             "tables_found": len(inventory),
             "tables_created": created,
             "tables_updated": updated,
-            "schema": payload.schema,
+            "schema": payload.schema_name,
         }
         db.commit()
     except Exception as e:
@@ -159,7 +159,7 @@ def extract_table_inventory(
         if run:
             run.status = "FAILED"
             run.ended_at = datetime.utcnow()
-            run.stats = {"error": str(e), "schema": payload.schema}
+            run.stats = {"error": str(e), "schema": payload.schema_name}
             db.commit()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -171,7 +171,7 @@ def extract_table_inventory(
         action="inventory.tables.extract",
         resource_type="database",
         resource_id=str(payload.database_id),
-        details={"instance_id": str(payload.instance_id), "schema": payload.schema, "table_count": len(result)},
+        details={"instance_id": str(payload.instance_id), "schema": payload.schema_name, "table_count": len(result)},
     )
     return success_response(request, result)
 

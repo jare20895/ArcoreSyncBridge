@@ -1,6 +1,6 @@
 from typing import Optional
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 class DatabaseInstanceBase(BaseModel):
     database_id: Optional[UUID] = Field(None, description="ID of the logical database this instance belongs to")
@@ -34,8 +34,7 @@ class DatabaseInstanceRead(DatabaseInstanceBase):
     id: UUID
     # Password excluded by default
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ConnectionTestRequest(BaseModel):
     host: str

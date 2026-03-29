@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 import logging
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.endpoints.database_instances import get_db
 from app.api.responses import success_response
@@ -21,7 +21,9 @@ class DropSlotRequest(BaseModel):
     instance_id: Optional[str] = None
 
 class VacuumTableRequest(BaseModel):
-    schema: str
+    model_config = ConfigDict(populate_by_name=True)
+
+    schema_name: str = Field(alias="schema")
     table: str
     full: bool = False
 
@@ -80,17 +82,17 @@ def vacuum_table(
     db: Session = Depends(get_db),
 ):
     """Run VACUUM on a table"""
-    MaintenanceService(db).vacuum_table(payload.schema, payload.table, payload.full)
+    MaintenanceService(db).vacuum_table(payload.schema_name, payload.table, payload.full)
     record_audit_event(
         db,
         request,
         principal,
         action="health.vacuum_table",
         resource_type="database_table",
-        resource_id=f"{payload.schema}.{payload.table}",
+        resource_id=f"{payload.schema_name}.{payload.table}",
         details={"full": payload.full},
     )
     return success_response(request, {
         "success": True,
-        "message": f"Successfully ran {'VACUUM FULL' if payload.full else 'VACUUM'} on {payload.schema}.{payload.table}"
+        "message": f"Successfully ran {'VACUUM FULL' if payload.full else 'VACUUM'} on {payload.schema_name}.{payload.table}"
     })

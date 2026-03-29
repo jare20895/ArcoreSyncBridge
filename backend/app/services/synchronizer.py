@@ -15,6 +15,7 @@ from app.services.database import DatabaseClient
 from app.services.secrets import resolve_sharepoint_client_secret
 import os
 
+from app.core.time import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,7 @@ class Synchronizer:
         if new_token:
             if cursor:
                 cursor.cursor_value = new_token
-                cursor.updated_at = datetime.utcnow()
+                cursor.updated_at = utc_now()
                 self.db.add(cursor)
             else:
                 new_cursor = SyncCursor(
@@ -123,7 +124,7 @@ class Synchronizer:
                     cursor_type="DELTA_TOKEN",
                     cursor_value=new_token,
                     target_list_id=target.target_list_id,
-                    updated_at=datetime.utcnow()
+                    updated_at=utc_now()
                 )
                 self.db.add(new_cursor)
             self.db.commit()
@@ -246,7 +247,7 @@ class Synchronizer:
                 
                 # Update Ledger
                 ledger_entry.content_hash = content_hash
-                ledger_entry.last_sync_ts = datetime.utcnow()
+                ledger_entry.last_sync_ts = utc_now()
                 ledger_entry.provenance = "PULL"
                 
             else:
@@ -276,8 +277,8 @@ class Synchronizer:
                         sp_list_id=list_id,
                         sp_item_id=int(sp_item_id),
                         content_hash=content_hash,
-                        last_source_ts=datetime.utcnow(),
-                        last_sync_ts=datetime.utcnow(),
+                        last_source_ts=utc_now(),
+                        last_sync_ts=utc_now(),
                         provenance="PULL"
                     )
                     self.db.add(new_entry)

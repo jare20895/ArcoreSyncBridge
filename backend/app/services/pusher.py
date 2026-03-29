@@ -17,6 +17,7 @@ from app.services.database import DatabaseClient
 from app.services.secrets import resolve_sharepoint_client_secret
 import os
 
+from app.core.time import utc_now
 from app.services.sharding import ShardingEvaluator
 
 
@@ -293,9 +294,9 @@ class Pusher:
                     
                     # Update Ledger
                     ledger_entry.content_hash = content_hash
-                    ledger_entry.last_sync_ts = datetime.utcnow()
+                    ledger_entry.last_sync_ts = utc_now()
                     ledger_entry.provenance = "PUSH"
-                    ledger_entry.last_source_ts = row_ts if isinstance(row_ts, datetime) else datetime.utcnow() # approx
+                    ledger_entry.last_source_ts = row_ts if isinstance(row_ts, datetime) else utc_now() # approx
                     success_count += 1
                     # Only advance cursor on successful update
                     if str(row_ts) > str(max_cursor_seen if max_cursor_seen else ""):
@@ -321,8 +322,8 @@ class Pusher:
                             sp_list_id=sp_list_guid,  # Store SharePoint GUID in ledger
                             sp_item_id=sp_item_id,
                             content_hash=content_hash,
-                            last_source_ts=row_ts if isinstance(row_ts, datetime) else datetime.utcnow(),
-                            last_sync_ts=datetime.utcnow(),
+                            last_source_ts=row_ts if isinstance(row_ts, datetime) else utc_now(),
+                            last_sync_ts=utc_now(),
                             provenance="PUSH"
                         )
                         self.db.add(new_entry)
@@ -351,7 +352,7 @@ class Pusher:
             
             if cursor:
                 cursor.cursor_value = max_cursor_seen
-                cursor.updated_at = datetime.utcnow()
+                cursor.updated_at = utc_now()
                 self.db.add(cursor)
             else:
                 new_cursor = SyncCursor(
@@ -360,7 +361,7 @@ class Pusher:
                     cursor_type="TIMESTAMP",
                     cursor_value=max_cursor_seen,
                     source_instance_id=db_instance.id,
-                    updated_at=datetime.utcnow()
+                    updated_at=utc_now()
                 )
                 self.db.add(new_cursor)
             
