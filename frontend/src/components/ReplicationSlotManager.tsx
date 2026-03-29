@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getReplicationSlots, createReplicationSlot, dropReplicationSlot } from '../services/api';
+import { useConfirmDialog } from '@/components/ui/ConfirmDialogProvider';
+import { useToast } from '@/components/ui/ToastProvider';
 
 interface ReplicationSlot {
   slot_name: string;
@@ -20,6 +22,8 @@ export const ReplicationSlotManager: React.FC<ReplicationSlotManagerProps> = ({ 
   const [error, setError] = useState('');
   const [newSlotName, setNewSlotName] = useState('');
   const [creating, setCreating] = useState(false);
+  const { confirm } = useConfirmDialog();
+  const { showToast } = useToast();
 
   const loadSlots = useCallback(async () => {
     setLoading(true);
@@ -44,6 +48,11 @@ export const ReplicationSlotManager: React.FC<ReplicationSlotManagerProps> = ({ 
     setError('');
     try {
       await createReplicationSlot(instanceId, newSlotName);
+      showToast({
+        title: 'Replication slot created',
+        description: `${newSlotName} is now available for CDC configuration.`,
+        variant: 'success',
+      });
       setNewSlotName('');
       await loadSlots();
     } catch (err: any) {
@@ -54,10 +63,23 @@ export const ReplicationSlotManager: React.FC<ReplicationSlotManagerProps> = ({ 
   };
 
   const handleDelete = async (slotName: string) => {
-    if (!confirm(`Are you sure you want to drop replication slot "${slotName}"? This may impact CDC syncs.`)) return;
+    const confirmed = await confirm({
+      title: 'Drop replication slot?',
+      description: `Dropping "${slotName}" can interrupt CDC processing for this source instance.`,
+      confirmLabel: 'Drop Slot',
+      cancelLabel: 'Keep Slot',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+
     setError('');
     try {
       await dropReplicationSlot(instanceId, slotName);
+      showToast({
+        title: 'Replication slot dropped',
+        description: `${slotName} has been removed from the source instance.`,
+        variant: 'success',
+      });
       await loadSlots();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to drop slot');

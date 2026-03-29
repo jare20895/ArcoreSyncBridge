@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { getDriftSummary, getDriftMetrics, triggerDriftReconciliation } from '../services/api';
 import { RefreshCw, AlertTriangle, CheckCircle, HelpCircle, TrendingUp } from 'lucide-react';
+import { useToast } from '@/components/ui/ToastProvider';
 
 export default function DriftMetricsWidget() {
   const [summary, setSummary] = useState<any>(null);
   const [metrics, setMetrics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [reconciling, setReconciling] = useState(false);
+  const { showToast } = useToast();
 
   useEffect(() => {
     fetchDriftData();
@@ -35,9 +37,18 @@ export default function DriftMetricsWidget() {
     try {
       await triggerDriftReconciliation();
       await fetchDriftData();
+      showToast({
+        title: 'Drift metrics refreshed',
+        description: 'Reconciliation completed and the dashboard has been updated.',
+        variant: 'success',
+      });
     } catch (error) {
       console.error('Failed to reconcile drift:', error);
-      alert('Failed to reconcile drift metrics');
+      showToast({
+        title: 'Failed to reconcile drift metrics',
+        description: 'The reconciliation request did not complete. Check the backend logs and try again.',
+        variant: 'error',
+      });
     } finally {
       setReconciling(false);
     }

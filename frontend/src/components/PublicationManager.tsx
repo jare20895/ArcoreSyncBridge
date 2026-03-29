@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getPublicationStatus, createPublication, dropPublication, getPublicationAvailableTables } from '../services/api';
 import { RefreshCw, Plus, Trash2, CheckCircle, AlertTriangle, List as ListIcon } from 'lucide-react';
+import { useConfirmDialog } from '@/components/ui/ConfirmDialogProvider';
+import { useToast } from '@/components/ui/ToastProvider';
 
 interface PublicationManagerProps {
   instanceId: string;
@@ -17,6 +19,8 @@ export const PublicationManager: React.FC<PublicationManagerProps> = ({ instance
   const [availableTables, setAvailableTables] = useState<string[]>([]);
   const [selectedTables, setSelectedTables] = useState<string[]>([]);
   const [loadingTables, setLoadingTables] = useState(false);
+  const { confirm } = useConfirmDialog();
+  const { showToast } = useToast();
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
@@ -67,6 +71,11 @@ export const PublicationManager: React.FC<PublicationManagerProps> = ({ instance
       }
       
       await createPublication(instanceId, "arcore_cdc_pub", isAll, selectedTables);
+      showToast({
+        title: 'Publication created',
+        description: isAll ? 'CDC publication now covers all tables.' : 'CDC publication now covers the selected tables.',
+        variant: 'success',
+      });
       await loadStatus();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to create publication');
@@ -76,11 +85,24 @@ export const PublicationManager: React.FC<PublicationManagerProps> = ({ instance
   };
 
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to drop the publication? CDC will stop working.")) return;
+    const confirmed = await confirm({
+      title: 'Drop publication?',
+      description: 'Dropping the publication will stop CDC capture until a new publication is created.',
+      confirmLabel: 'Drop Publication',
+      cancelLabel: 'Keep Publication',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+
     setProcessing(true);
     setError('');
     try {
       await dropPublication(instanceId);
+      showToast({
+        title: 'Publication dropped',
+        description: 'CDC publication has been removed from the source instance.',
+        variant: 'success',
+      });
       await loadStatus();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to drop publication');
